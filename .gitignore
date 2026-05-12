@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local environment files
+.env
+.env.*
+
+# Runtime data
+data/*
+output/*
+input/*
+
+# Keep runtime directories in Git
+!data/.gitkeep
+!output/.gitkeep
+!input/.gitkeep
+
+# Model weights are large binary assets; manage them outside Git by default.
+models/*.pt
+models/*.onnx
+models/*.engine
+!models/.gitkeep
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
