@@ -10,7 +10,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
-from video_label import VideoLabel
+from ui.video_label import VideoLabel
 
 
 def setup_ui(mw):

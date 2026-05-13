@@ -5,8 +5,8 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
-from detector import DetectionThread
-from ui import setup_ui
+from core.detector import DetectionThread
+from ui.main_view import setup_ui
 
 
 class MainWindow(QMainWindow):
@@ -396,7 +396,7 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-if __name__ == "__main__":
+def run():
     app = QApplication(sys.argv)
     window = MainWindow()
     screen = app.primaryScreen().availableGeometry()
@@ -406,3 +406,7 @@ if __name__ == "__main__":
     window.move(window_rect.topLeft())
     window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    run()
