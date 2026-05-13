@@ -72,6 +72,27 @@ class MainWindow(QMainWindow):
         self.progress_slider.setValue(idx)
         self.updating_progress = False
 
+    def get_detection_params(self):
+        return {
+            "model_name": self.model_combo.currentText(),
+            "conf_threshold": self.conf_spin.value(),
+            "image_size": int(self.image_size_combo.currentText()),
+            "tracker_max_age": self.max_age_spin.value(),
+            "tracker_n_init": self.n_init_spin.value(),
+            "detect_interval": self.detect_interval_spin.value(),
+        }
+
+    def set_param_panel_enabled(self, enabled):
+        for widget in (
+            self.model_combo,
+            self.conf_spin,
+            self.image_size_combo,
+            self.max_age_spin,
+            self.n_init_spin,
+            self.detect_interval_spin,
+        ):
+            widget.setEnabled(enabled)
+
     # ================== 视频打开 ==================
     def open_video(self):
         if self.is_detecting:
@@ -209,6 +230,7 @@ class MainWindow(QMainWindow):
         self.btn_detect.setIcon(self.detect_icon_active)
         self.btn_detect.setToolTip("停止检测")
         self.speed_combo.setEnabled(False)
+        self.set_param_panel_enabled(False)
         self.video_label.set_region_enabled(False)
         if self.is_playing:
             self._launch_detection_thread()
@@ -224,6 +246,7 @@ class MainWindow(QMainWindow):
             self.detector_thread.stop()
             self.detector_thread = None
         self.speed_combo.setEnabled(True)
+        self.set_param_panel_enabled(True)
         self.video_label.set_region_enabled(True)
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
@@ -233,7 +256,8 @@ class MainWindow(QMainWindow):
             return
         video_basename = os.path.splitext(os.path.basename(self.video_path))[0]
         timestamp = QDateTime.currentDateTime().toString("yyyyMMdd_hhmmss")
-        model_name = self.model_combo.currentText()
+        params = self.get_detection_params()
+        model_name = params["model_name"]
         
         data_dir = os.path.abspath(self.data_dir)
         os.makedirs(data_dir, exist_ok=True)
@@ -244,6 +268,13 @@ class MainWindow(QMainWindow):
 
         self.detector_thread = DetectionThread()
         self.detector_thread.set_model(os.path.join("models", f"{model_name}.pt"))
+        self.detector_thread.set_detection_params(
+            conf_threshold=params["conf_threshold"],
+            image_size=params["image_size"],
+            tracker_max_age=params["tracker_max_age"],
+            tracker_n_init=params["tracker_n_init"],
+            detect_interval=params["detect_interval"],
+        )
         self.detector_thread.fps = self.fps
         self.detector_thread.set_db_path(db_path)
         self.detector_thread.set_video_writer(

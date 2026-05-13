@@ -26,6 +26,11 @@ class DetectionThread(QThread):
 
         self.model_path = "models/yolo11n.pt"
         self.fps = 25.0
+        self.conf_threshold = 0.55
+        self.image_size = 640
+        self.tracker_max_age = 20
+        self.tracker_n_init = 4
+        self.detect_interval = 1
 
         self.detector = None
         self.tracker = None
@@ -35,6 +40,20 @@ class DetectionThread(QThread):
 
     def set_model(self, model_path):
         self.model_path = model_path
+
+    def set_detection_params(
+        self,
+        conf_threshold=0.55,
+        image_size=640,
+        tracker_max_age=20,
+        tracker_n_init=4,
+        detect_interval=1,
+    ):
+        self.conf_threshold = conf_threshold
+        self.image_size = image_size
+        self.tracker_max_age = tracker_max_age
+        self.tracker_n_init = tracker_n_init
+        self.detect_interval = detect_interval
 
     def set_region(self, region_norm):
         self.counter.set_region(region_norm)
@@ -46,9 +65,16 @@ class DetectionThread(QThread):
         self.recorder.open(out_path, self.fps, width, height)
 
     def load_model(self):
-        self.detector = PersonDetector(self.model_path)
+        self.detector = PersonDetector(
+            self.model_path,
+            conf_threshold=self.conf_threshold,
+            image_size=self.image_size,
+        )
         self.detector.load()
-        self.tracker = PersonTracker()
+        self.tracker = PersonTracker(
+            max_age=self.tracker_max_age,
+            n_init=self.tracker_n_init,
+        )
 
     def run(self):
         self.store.open()

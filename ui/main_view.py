@@ -10,6 +10,16 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
 
+from app.config import (
+    DEFAULT_CONF_THRESHOLD,
+    DEFAULT_DETECT_INTERVAL,
+    DEFAULT_IMAGE_SIZE,
+    DEFAULT_MODEL,
+    DEFAULT_TRACKER_MAX_AGE,
+    DEFAULT_TRACKER_N_INIT,
+    IMAGE_SIZE_OPTIONS,
+    MODEL_OPTIONS,
+)
 from ui.video_label import VideoLabel
 
 
@@ -24,37 +34,7 @@ def setup_ui(mw):
     top_layout = QHBoxLayout()
     top_layout.setSpacing(0)
 
-    left_margin = 36
-    model_width = 130
-
-    spacer_before_model = left_margin - 10
-    if spacer_before_model < 0:
-        spacer_before_model = 0
-
-    middle_gap = 180 - spacer_before_model - model_width
-    if middle_gap < 0:
-        middle_gap = 0
-
-    top_layout.addSpacerItem(QSpacerItem(spacer_before_model, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
-
-    # 模型选择容器
-    model_container = QWidget()
-    model_container.setFixedWidth(model_width)
-    model_panel = QVBoxLayout(model_container)
-    model_panel.setContentsMargins(0, 0, 0, 0)
-    model_panel.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-
-    model_panel.addWidget(QLabel("模型选择"))
-    mw.model_combo = QComboBox()
-    mw.model_combo.addItems(["yolo11n", "yolo11s", "yolo11m"])
-    mw.model_combo.setCurrentIndex(0)
-    mw.model_combo.setFixedWidth(120)
-    model_panel.addWidget(mw.model_combo)
-    model_panel.addStretch()
-
-    top_layout.addWidget(model_container)
-
-    top_layout.addSpacerItem(QSpacerItem(middle_gap, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    top_layout.addSpacerItem(QSpacerItem(180, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 视频显示标签
     mw.video_label = VideoLabel()
@@ -151,11 +131,62 @@ def setup_ui(mw):
 
     main_layout.addLayout(control_layout)
 
-    # ------------------ 底部布局（统计面板 + 曲线图） ------------------
+    # ------------------ 底部布局（参数面板 + 统计面板 + 曲线图） ------------------
     bottom_layout = QHBoxLayout()
-    bottom_layout.setSpacing(10)
+    bottom_layout.setSpacing(12)
 
-    # 左侧统计面板
+    # 左侧参数面板
+    param_panel = QVBoxLayout()
+    param_panel.setContentsMargins(0, 8, 0, 0)
+    param_panel.setSpacing(4)
+
+    param_panel.addWidget(QLabel("模型选择"))
+    mw.model_combo = QComboBox()
+    mw.model_combo.addItems(MODEL_OPTIONS)
+    mw.model_combo.setCurrentText(DEFAULT_MODEL)
+    mw.model_combo.setFixedWidth(118)
+    param_panel.addWidget(mw.model_combo)
+
+    mw.conf_spin = QDoubleSpinBox()
+    mw.conf_spin.setRange(0.10, 0.95)
+    mw.conf_spin.setSingleStep(0.05)
+    mw.conf_spin.setDecimals(2)
+    mw.conf_spin.setValue(DEFAULT_CONF_THRESHOLD)
+    mw.conf_spin.setFixedWidth(62)
+    param_panel.addLayout(create_param_row("置信度阈值", mw.conf_spin))
+
+    param_panel.addWidget(QLabel("检测尺寸"))
+    mw.image_size_combo = QComboBox()
+    mw.image_size_combo.addItems([str(size) for size in IMAGE_SIZE_OPTIONS])
+    mw.image_size_combo.setCurrentText(str(DEFAULT_IMAGE_SIZE))
+    mw.image_size_combo.setFixedWidth(118)
+    param_panel.addWidget(mw.image_size_combo)
+
+    mw.max_age_spin = QSpinBox()
+    mw.max_age_spin.setRange(1, 300)
+    mw.max_age_spin.setValue(DEFAULT_TRACKER_MAX_AGE)
+    mw.max_age_spin.setFixedWidth(62)
+    param_panel.addLayout(create_param_row("最大丢失帧数", mw.max_age_spin))
+
+    mw.n_init_spin = QSpinBox()
+    mw.n_init_spin.setRange(1, 30)
+    mw.n_init_spin.setValue(DEFAULT_TRACKER_N_INIT)
+    mw.n_init_spin.setFixedWidth(62)
+    param_panel.addLayout(create_param_row("确认所需帧数", mw.n_init_spin))
+
+    mw.detect_interval_spin = QSpinBox()
+    mw.detect_interval_spin.setRange(1, 30)
+    mw.detect_interval_spin.setValue(DEFAULT_DETECT_INTERVAL)
+    mw.detect_interval_spin.setFixedWidth(62)
+    param_panel.addLayout(create_param_row("抽帧间隔", mw.detect_interval_spin))
+    param_panel.addStretch()
+
+    param_widget = QWidget()
+    param_widget.setLayout(param_panel)
+    param_widget.setFixedWidth(180)
+    bottom_layout.addWidget(param_widget)
+
+    # 中部统计面板
     stats_panel = QVBoxLayout()
     stats_panel.setContentsMargins(0, 20, 0, 0)
     mw.label_crossing = QLabel("累积通过人数: 0")
@@ -172,16 +203,11 @@ def setup_ui(mw):
     stats_widget.setLayout(stats_panel)
     stats_widget.setFixedWidth(200)
 
-    left_margin = 50
-    bottom_layout.addSpacerItem(QSpacerItem(left_margin, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
     bottom_layout.addWidget(stats_widget)
 
     # 曲线图容器
     curve_container = QHBoxLayout()
     curve_container.setContentsMargins(0, 0, 0, 0)
-
-    left_offset = -100
-    curve_container.addSpacerItem(QSpacerItem(left_offset, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     mw.figure = Figure(figsize=(7, 1.8), dpi=100)
     bg_color = mw.palette().color(QPalette.Window).name()
@@ -212,6 +238,18 @@ def setup_ui(mw):
     mw.info_text = mw.ax.text(0.5, 0.95, "", transform=mw.ax.transAxes,
                               ha='center', va='top', fontsize=9, color='red',
                               bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+
+def create_param_row(label_text, editor):
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    label = QLabel(label_text)
+    label.setFixedWidth(92)
+    row.addWidget(label)
+    row.addWidget(editor)
+    row.addStretch()
+    return row
+
 
 def create_concentric_icon(size=20, color=QColor(0, 0, 0)):
     pixmap = QPixmap(size, size)
