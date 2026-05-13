@@ -38,6 +38,7 @@ class DetectionThread(QThread):
         self.tracker_max_age = 20
         self.tracker_n_init = 4
         self.detect_interval = 1
+        self.param_snapshot = None
 
         self.detector = None
         self.tracker = None
@@ -68,6 +69,9 @@ class DetectionThread(QThread):
     def set_db_path(self, db_path):
         self.store.set_db_path(db_path)
 
+    def set_param_snapshot(self, params):
+        self.param_snapshot = dict(params)
+
     def set_video_writer(self, out_path, width, height):
         self.recorder.open(out_path, self.fps, width, height)
 
@@ -86,6 +90,8 @@ class DetectionThread(QThread):
     def run(self):
         try:
             self.store.open()
+            if self.param_snapshot:
+                self.store.save_detection_params(self.param_snapshot)
             self.load_model()
             while True:
                 self.mutex.lock()
@@ -176,6 +182,8 @@ class DetectionThread(QThread):
 
         for track_id, enter_sec, leave_sec in snapshot.duration_records:
             self.store.record_duration(track_id, enter_sec, leave_sec)
+        for track_id, crossing_sec in snapshot.crossing_events:
+            self.store.record_crossing_event(track_id, frame_idx, crossing_sec)
         self.store.record_second_stats(frame_idx, self.fps, snapshot.active_ids)
 
         self.stats_updated.emit(snapshot.total_crossing, snapshot.inside_count)

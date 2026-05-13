@@ -7,6 +7,7 @@ from PySide6.QtGui import *
 
 from core.exceptions import DetectionPipelineError
 from services.detection_worker import DetectionThread
+from storage.sqlite_store import DetectionStore
 from ui.main_view import setup_ui
 
 
@@ -48,11 +49,11 @@ class MainWindow(QMainWindow):
         # 统计数据
         self.total_crossing = 0
         self.current_in_region = 0
+        self.stats_db_path = None
 
         # 曲线数据
         self.curve_frames = []
         self.curve_counts = []
-        self.crossing_history = []
 
         # 计数区域
         self.count_region = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
@@ -97,6 +98,16 @@ class MainWindow(QMainWindow):
         ):
             widget.setEnabled(enabled)
 
+    def apply_detection_params(self, params):
+        if not params:
+            return
+        self.model_combo.setCurrentText(str(params["model_name"]))
+        self.conf_spin.setValue(float(params["conf_threshold"]))
+        self.image_size_combo.setCurrentText(str(int(params["image_size"])))
+        self.max_age_spin.setValue(int(params["tracker_max_age"]))
+        self.n_init_spin.setValue(int(params["tracker_n_init"]))
+        self.detect_interval_spin.setValue(int(params["detect_interval"]))
+
     # ================== 视频打开 ==================
     def open_video(self):
         if self.is_detecting:
@@ -130,6 +141,7 @@ class MainWindow(QMainWindow):
         self.detection_stream_finished = False
         self.is_replay = False
         self.btn_detect.setEnabled(True)
+        self.set_param_panel_enabled(True)
         self.show_frame_at(0)
         self.btn_play.setEnabled(True)
         self.time_label.setText(f"0:00 / {self.format_time(self.total_frames / self.fps)}")
@@ -137,9 +149,9 @@ class MainWindow(QMainWindow):
     def _clear_data(self):
         self.total_crossing = 0
         self.current_in_region = 0
+        self.stats_db_path = None
         self.curve_frames.clear()
         self.curve_counts.clear()
-        self.crossing_history.clear()
         self.update_stats(0, 0)
         self.clear_span_selection()
         self.update_curve()
@@ -155,6 +167,9 @@ class MainWindow(QMainWindow):
                 seconds = idx / self.fps
                 total_seconds = self.total_frames / self.fps
                 self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
+                self.current_frame_idx = idx
+                if self.is_replay:
+                    self._update_replay_stats_at(idx)
 
     def frame_to_pixmap(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -266,7 +281,7 @@ class MainWindow(QMainWindow):
         self.last_submitted_frame_idx = self.last_processed_frame_idx
         self.detection_stream_finished = False
         self.speed_combo.setEnabled(True)
-        self.set_param_panel_enabled(True)
+        self.set_param_panel_enabled(not self.is_replay)
         self.video_label.set_region_enabled(True)
         if self.is_playing:
             self.timer.setInterval(self._playback_timer_interval())
@@ -284,7 +299,7 @@ class MainWindow(QMainWindow):
                 self.detector_thread.stop()
             self.detector_thread = None
         self.speed_combo.setEnabled(True)
-        self.set_param_panel_enabled(True)
+        self.set_param_panel_enabled(not self.is_replay)
         self.video_label.set_region_enabled(True)
         if self.is_playing:
             self.timer.setInterval(self._playback_timer_interval())
@@ -308,6 +323,7 @@ class MainWindow(QMainWindow):
         out_path = os.path.join(output_dir, f"output_{video_basename}_{model_name}_{timestamp}.mp4")
 
         try:
+            self.stats_db_path = db_path
             self.detector_thread = DetectionThread()
             self.detector_thread.set_model(os.path.join("models", f"{model_name}.pt"))
             self.detector_thread.set_detection_params(
@@ -319,6 +335,10 @@ class MainWindow(QMainWindow):
             )
             self.detector_thread.fps = self.fps
             self.detector_thread.set_db_path(db_path)
+            param_snapshot = dict(params)
+            param_snapshot["fps"] = self.fps
+            param_snapshot["total_frames"] = self.total_frames
+            self.detector_thread.set_param_snapshot(param_snapshot)
             self.detector_thread.set_video_writer(
                 out_path,
                 int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
@@ -327,7 +347,6 @@ class MainWindow(QMainWindow):
             self.detector_thread.frame_processed.connect(self.on_frame_processed)
             self.detector_thread.stats_updated.connect(self.update_stats)
             self.detector_thread.curve_data.connect(self.on_curve_data)
-            self.detector_thread.crossing_signal.connect(self.on_crossing_record)
             self.detector_thread.error_occurred.connect(self.on_detection_error)
             self.detector_thread.set_region(self.count_region)
             self.detector_thread.start()
@@ -378,7 +397,48 @@ class MainWindow(QMainWindow):
         self.speed_combo.setCurrentIndex(1)
         self.speed_combo.blockSignals(False)
         self.btn_play.setEnabled(True)
+        matched_db_path = self._match_replay_db(path)
+        if matched_db_path:
+            try:
+                self.stats_db_path = matched_db_path
+                self._restore_params_from_db(matched_db_path)
+                self._restore_stats_from_db(matched_db_path)
+                self.set_param_panel_enabled(False)
+            except DetectionPipelineError as exc:
+                self.stats_db_path = None
+                QMessageBox.warning(self, "提示", str(exc))
+        else:
+            self.set_param_panel_enabled(False)
+            QMessageBox.warning(self, "提示", "未找到对应统计数据库，回放仅显示视频")
         self.show_frame_at(0)
+
+    def _match_replay_db(self, replay_path):
+        replay_stem = os.path.splitext(os.path.basename(replay_path))[0]
+        if not replay_stem.startswith("output_"):
+            return None
+        db_name = f"data_{replay_stem[len('output_'):]}.db"
+        db_path = os.path.join(os.path.abspath(self.data_dir), db_name)
+        return db_path if os.path.exists(db_path) else None
+
+    def _restore_stats_from_db(self, db_path):
+        second_stats = DetectionStore.load_second_stats(db_path)
+        self.curve_frames = [int(second * self.fps) for second, _ in second_stats]
+        self.curve_counts = [inside_count for _, inside_count in second_stats]
+        self._update_replay_stats_at(0)
+        self.update_curve()
+
+    def _restore_params_from_db(self, db_path):
+        params = DetectionStore.load_detection_params(db_path)
+        if not params:
+            raise DetectionPipelineError("未找到回放视频对应的检测参数")
+        self.apply_detection_params(params)
+
+    def _update_replay_stats_at(self, frame_idx):
+        if not self.is_replay or not self.stats_db_path or self.fps <= 0:
+            return
+        current_sec = frame_idx / self.fps
+        crossing, inside = DetectionStore.get_replay_stats_at(self.stats_db_path, current_sec)
+        self.update_stats(crossing, inside)
 
     # ================== 帧更新循环 ==================
     def update_frame(self):
@@ -398,6 +458,8 @@ class MainWindow(QMainWindow):
             seconds = self.current_frame_idx / self.fps
             total_seconds = self.total_frames / self.fps
             self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
+            if self.is_replay:
+                self._update_replay_stats_at(self.current_frame_idx)
             pix = self.frame_to_pixmap(frame)
             self.video_label.setPixmap(pix)
 
@@ -450,9 +512,6 @@ class MainWindow(QMainWindow):
         self.curve_frames.append(frame_idx)
         self.curve_counts.append(count)
         self.update_curve()
-
-    def on_crossing_record(self, frame_idx, crossing):
-        self.crossing_history.append((frame_idx, crossing))
 
     def clear_span_selection(self):
         if hasattr(self, "span_start_edit"):
@@ -549,16 +608,18 @@ class MainWindow(QMainWindow):
         if start_sec > end_sec:
             start_sec, end_sec = end_sec, start_sec
 
-        start_frame = int(start_sec * self.fps)
-        end_frame = int(end_sec * self.fps)
-        if start_frame < 0: start_frame = 0
-        if end_frame >= self.total_frames: end_frame = self.total_frames - 1
-        crossing_start = 0
-        crossing_end = 0
-        for f, c in self.crossing_history:
-            if f <= start_frame: crossing_start = c
-            if f <= end_frame: crossing_end = c
-        interval_crossing = crossing_end - crossing_start
+        if not self.stats_db_path:
+            QMessageBox.warning(self, "提示", "未找到当前统计数据库")
+            return
+        try:
+            interval_crossing = DetectionStore.count_crossings_between(
+                self.stats_db_path,
+                start_sec,
+                end_sec,
+            )
+        except DetectionPipelineError as exc:
+            QMessageBox.warning(self, "提示", str(exc))
+            return
 
         if update_inputs:
             self.span_start_edit.setText(self.format_time(start_sec))

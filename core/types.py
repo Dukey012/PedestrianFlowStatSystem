@@ -20,6 +20,7 @@ class CountingSnapshot:
     inside_count: int
     active_ids: set[int]
     duration_records: list[tuple[int, float, float]]
+    crossing_events: list[tuple[int, float]]
 
 
 @dataclass(frozen=True)

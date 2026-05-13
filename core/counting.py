@@ -22,6 +22,7 @@ class RegionCounter:
         region_pixels = self.get_region_pixels(frame_shape)
         current_ids_in_region = set()
         duration_records = []
+        crossing_events = []
 
         for track in tracks:
             x1, y1, x2, y2 = track.ltrb
@@ -39,6 +40,7 @@ class RegionCounter:
                 if track.track_id in self.track_entered:
                     del self.track_entered[track.track_id]
                     self.total_crossing += 1
+                    crossing_events.append((track.track_id, current_sec))
                 if track.track_id in self.active_durations:
                     enter_sec = self.active_durations.pop(track.track_id)
                     duration_records.append((track.track_id, enter_sec, current_sec))
@@ -48,6 +50,7 @@ class RegionCounter:
             inside_count=len(current_ids_in_region),
             active_ids=current_ids_in_region,
             duration_records=duration_records,
+            crossing_events=crossing_events,
         )
 
     def get_active_duration_records(self, current_sec):
