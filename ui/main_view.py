@@ -34,11 +34,11 @@ def setup_ui(mw):
     top_layout = QHBoxLayout()
     top_layout.setSpacing(0)
 
-    top_layout.addSpacerItem(QSpacerItem(180, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    top_layout.addSpacerItem(QSpacerItem(130, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 视频显示标签
     mw.video_label = VideoLabel()
-    mw.video_label.setFixedSize(900, 600)
+    mw.video_label.setFixedSize(860, 540)
     mw.video_label.region_changed.connect(mw.on_region_changed)
     top_layout.addWidget(mw.video_label)
 
@@ -191,7 +191,7 @@ def setup_ui(mw):
     param_widget.setLayout(param_panel)
     param_widget.setFixedWidth(230)
     bottom_layout.addWidget(param_widget)
-    bottom_layout.addSpacerItem(QSpacerItem(32, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    bottom_layout.addSpacerItem(QSpacerItem(64, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 中部统计面板
     stats_panel = QVBoxLayout()
@@ -211,7 +211,7 @@ def setup_ui(mw):
     stats_widget.setFixedWidth(200)
 
     bottom_layout.addWidget(stats_widget)
-    bottom_layout.addSpacerItem(QSpacerItem(32, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    bottom_layout.addSpacerItem(QSpacerItem(8, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 曲线图容器
     curve_container = QHBoxLayout()
@@ -239,7 +239,7 @@ def setup_ui(mw):
     mw.ax.set_ylim(0, 10)
     mw.line, = mw.ax.plot([], [], color='#0072bd', linewidth=1.5)
     mw.pos_line = mw.ax.axvline(x=0, color='red', linewidth=1, linestyle='--')
-    mw.figure.subplots_adjust(left=0.14, right=0.975, top=0.85, bottom=0.25)
+    mw.figure.subplots_adjust(left=0.11, right=0.975, top=0.85, bottom=0.25)
 
     mw.span = SpanSelector(mw.ax, mw.on_span_select, 'horizontal',
                            useblit=True, props=dict(alpha=0.2, facecolor='red'))
