@@ -36,7 +36,7 @@ def setup_ui(mw):
 
     # 视频显示标签
     mw.video_label = VideoLabel()
-    mw.video_label.setFixedSize(820, 500)
+    mw.video_label.setFixedSize(860, 540)
     mw.video_label.region_changed.connect(mw.on_region_changed)
     top_layout.addStretch(1)
     top_layout.addWidget(mw.video_label)
