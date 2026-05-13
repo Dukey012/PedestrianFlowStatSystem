@@ -34,14 +34,12 @@ def setup_ui(mw):
     top_layout = QHBoxLayout()
     top_layout.setSpacing(0)
 
-    top_layout.addSpacerItem(QSpacerItem(130, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
-
     # 视频显示标签
     mw.video_label = VideoLabel()
-    mw.video_label.setFixedSize(860, 540)
+    mw.video_label.setFixedSize(820, 500)
     mw.video_label.region_changed.connect(mw.on_region_changed)
+    top_layout.addStretch(1)
     top_layout.addWidget(mw.video_label)
-
     top_layout.addStretch(1)
 
     main_layout.addLayout(top_layout)
@@ -191,7 +189,7 @@ def setup_ui(mw):
     param_widget.setLayout(param_panel)
     param_widget.setFixedWidth(230)
     bottom_layout.addWidget(param_widget)
-    bottom_layout.addSpacerItem(QSpacerItem(64, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    bottom_layout.addSpacerItem(QSpacerItem(48, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 中部统计面板
     stats_panel = QVBoxLayout()

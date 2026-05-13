@@ -7,7 +7,7 @@ class PersonDetector:
     def __init__(
         self,
         model_path="models/yolo11n.pt",
-        conf_threshold=0.55,
+        conf_threshold=0.5,
         image_size=640,
         person_class_id=0,
     ):

@@ -26,7 +26,7 @@ class DetectionThread(QThread):
 
         self.model_path = "models/yolo11n.pt"
         self.fps = 25.0
-        self.conf_threshold = 0.55
+        self.conf_threshold = 0.5
         self.image_size = 640
         self.tracker_max_age = 20
         self.tracker_n_init = 4
@@ -43,7 +43,7 @@ class DetectionThread(QThread):
 
     def set_detection_params(
         self,
-        conf_threshold=0.55,
+        conf_threshold=0.5,
         image_size=640,
         tracker_max_age=20,
         tracker_n_init=4,

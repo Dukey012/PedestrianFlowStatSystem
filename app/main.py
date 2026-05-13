@@ -13,7 +13,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("行人流量统计系统")
-        self.setFixedSize(1360, 900)
+        self.setFixedSize(1280, 860)
 
         # 目录
         self.input_dir = "input"
