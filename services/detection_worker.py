@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QMutex, QThread, QWaitCondition, Signal
 
+from core.exceptions import DetectionPipelineError
 from core.counting import RegionCounter
 from core.detection import PersonDetector
 from core.tracking import PersonTracker
@@ -14,6 +15,7 @@ class DetectionThread(QThread):
     stats_updated = Signal(int, int)
     curve_data = Signal(int, int)
     crossing_signal = Signal(int, int)
+    error_occurred = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -77,28 +79,37 @@ class DetectionThread(QThread):
         )
 
     def run(self):
-        self.store.open()
-        self.load_model()
-        while self.running:
-            self.mutex.lock()
-            if not self.new_frame_available:
-                self.cond.wait(self.mutex)
-            if not self.running:
+        try:
+            self.store.open()
+            self.load_model()
+            while self.running:
+                self.mutex.lock()
+                if not self.new_frame_available:
+                    self.cond.wait(self.mutex)
+                if not self.running:
+                    self.mutex.unlock()
+                    break
+                frame = self.current_frame.copy() if self.current_frame is not None else None
+                frame_idx = self.current_frame_idx
+                self.new_frame_available = False
                 self.mutex.unlock()
-                break
-            frame = self.current_frame.copy() if self.current_frame is not None else None
-            frame_idx = self.current_frame_idx
-            self.new_frame_available = False
-            self.mutex.unlock()
 
-            if frame is not None:
-                processed = self._detect_and_track(frame, frame_idx)
-                self.recorder.write(processed, frame_idx, frame)
-                self.frame_processed.emit(processed)
+                if frame is not None:
+                    processed = self._detect_and_track(frame, frame_idx)
+                    self.recorder.write(processed, frame_idx, frame)
+                    self.frame_processed.emit(processed)
 
-        current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
-        self.store.close(self.counter.get_active_duration_records(current_sec))
-        self.recorder.close()
+            current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
+            self.store.close(self.counter.get_active_duration_records(current_sec))
+        except DetectionPipelineError as exc:
+            self.running = False
+            self.error_occurred.emit(str(exc))
+        except Exception as exc:
+            self.running = False
+            self.error_occurred.emit(f"检测流程发生未知错误: {exc}")
+        finally:
+            self._close_store_safely()
+            self.recorder.close()
 
     def process_frame(self, frame, frame_idx):
         self.mutex.lock()
@@ -150,6 +161,13 @@ class DetectionThread(QThread):
         cv2.putText(frame, f"Inside: {inside_count}", (10, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         cv2.polylines(frame, [np.array(region_pixels)], isClosed=True, color=(255, 0, 0), thickness=2)
+
+    def _close_store_safely(self):
+        try:
+            current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
+            self.store.close(self.counter.get_active_duration_records(current_sec))
+        except Exception:
+            pass
 
     @staticmethod
     def _format_time(seconds):

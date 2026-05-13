@@ -1,5 +1,7 @@
 import cv2
 
+from core.exceptions import DetectionPipelineError
+
 
 class VideoRecorder:
     def __init__(self):
@@ -10,6 +12,8 @@ class VideoRecorder:
     def open(self, out_path, fps, width, height):
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         self.video_writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+        if not self.video_writer.isOpened():
+            raise DetectionPipelineError(f"无法创建输出视频: {out_path}")
         self.last_written_idx = -1
         self.last_raw_frame = None
 

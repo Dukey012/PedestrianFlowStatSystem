@@ -1,0 +1,2 @@
+class DetectionPipelineError(Exception):
+    pass

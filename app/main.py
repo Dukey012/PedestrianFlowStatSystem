@@ -5,6 +5,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
+from core.exceptions import DetectionPipelineError
 from services.detection_worker import DetectionThread
 from ui.main_view import setup_ui
 
@@ -251,6 +252,23 @@ class MainWindow(QMainWindow):
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
 
+    def on_detection_error(self, message):
+        self.pause_video()
+        self.is_detecting = False
+        self.btn_detect.setChecked(False)
+        self.btn_detect.setIcon(self.detect_icon_normal)
+        self.btn_detect.setToolTip("检测")
+        if self.detector_thread:
+            if self.detector_thread.isRunning():
+                self.detector_thread.stop()
+            self.detector_thread = None
+        self.speed_combo.setEnabled(True)
+        self.set_param_panel_enabled(True)
+        self.video_label.set_region_enabled(True)
+        self.current_in_region = 0
+        self.update_stats(self.total_crossing, 0)
+        QMessageBox.critical(self, "检测错误", message)
+
     def _launch_detection_thread(self):
         if self.detector_thread and self.detector_thread.isRunning():
             return
@@ -266,28 +284,36 @@ class MainWindow(QMainWindow):
         os.makedirs(output_dir, exist_ok=True)
         out_path = os.path.join(output_dir, f"output_{video_basename}_{model_name}_{timestamp}.mp4")
 
-        self.detector_thread = DetectionThread()
-        self.detector_thread.set_model(os.path.join("models", f"{model_name}.pt"))
-        self.detector_thread.set_detection_params(
-            conf_threshold=params["conf_threshold"],
-            image_size=params["image_size"],
-            tracker_max_age=params["tracker_max_age"],
-            tracker_n_init=params["tracker_n_init"],
-            detect_interval=params["detect_interval"],
-        )
-        self.detector_thread.fps = self.fps
-        self.detector_thread.set_db_path(db_path)
-        self.detector_thread.set_video_writer(
-            out_path,
-            int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        )
-        self.detector_thread.frame_processed.connect(self.on_frame_processed)
-        self.detector_thread.stats_updated.connect(self.update_stats)
-        self.detector_thread.curve_data.connect(self.on_curve_data)
-        self.detector_thread.crossing_signal.connect(self.on_crossing_record)
-        self.detector_thread.set_region(self.count_region)
-        self.detector_thread.start()
+        try:
+            self.detector_thread = DetectionThread()
+            self.detector_thread.set_model(os.path.join("models", f"{model_name}.pt"))
+            self.detector_thread.set_detection_params(
+                conf_threshold=params["conf_threshold"],
+                image_size=params["image_size"],
+                tracker_max_age=params["tracker_max_age"],
+                tracker_n_init=params["tracker_n_init"],
+                detect_interval=params["detect_interval"],
+            )
+            self.detector_thread.fps = self.fps
+            self.detector_thread.set_db_path(db_path)
+            self.detector_thread.set_video_writer(
+                out_path,
+                int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            )
+            self.detector_thread.frame_processed.connect(self.on_frame_processed)
+            self.detector_thread.stats_updated.connect(self.update_stats)
+            self.detector_thread.curve_data.connect(self.on_curve_data)
+            self.detector_thread.crossing_signal.connect(self.on_crossing_record)
+            self.detector_thread.error_occurred.connect(self.on_detection_error)
+            self.detector_thread.set_region(self.count_region)
+            self.detector_thread.start()
+        except DetectionPipelineError as exc:
+            self.detector_thread = None
+            self.on_detection_error(str(exc))
+        except Exception as exc:
+            self.detector_thread = None
+            self.on_detection_error(f"启动检测失败: {exc}")
 
     # ================== 回放 ==================
     def open_replay(self):

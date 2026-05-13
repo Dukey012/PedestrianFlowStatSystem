@@ -1,5 +1,8 @@
+import os
+
 from ultralytics import YOLO
 
+from core.exceptions import DetectionPipelineError
 from core.types import DetectionBox
 
 
@@ -18,19 +21,27 @@ class PersonDetector:
         self.model = None
 
     def load(self):
-        self.model = YOLO(self.model_path)
-        self.model.classes = [self.person_class_id]
+        if not os.path.exists(self.model_path):
+            raise DetectionPipelineError(f"模型文件不存在: {self.model_path}")
+        try:
+            self.model = YOLO(self.model_path)
+            self.model.classes = [self.person_class_id]
+        except Exception as exc:
+            raise DetectionPipelineError(f"模型加载失败: {exc}") from exc
 
     def detect(self, frame):
         if self.model is None:
             self.load()
 
-        results = self.model(
-            frame,
-            imgsz=self.image_size,
-            classes=[self.person_class_id],
-            verbose=False,
-        )[0]
+        try:
+            results = self.model(
+                frame,
+                imgsz=self.image_size,
+                classes=[self.person_class_id],
+                verbose=False,
+            )[0]
+        except Exception as exc:
+            raise DetectionPipelineError(f"YOLO 推理失败: {exc}") from exc
         detections = []
         for box in results.boxes:
             class_id = int(box.cls[0].item())
