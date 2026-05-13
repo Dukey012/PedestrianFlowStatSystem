@@ -135,14 +135,14 @@ def setup_ui(mw):
 
     # 左侧参数面板
     param_panel = QVBoxLayout()
-    param_panel.setContentsMargins(0, 8, 0, 0)
-    param_panel.setSpacing(6)
+    param_panel.setContentsMargins(0, 0, 0, 0)
+    param_panel.setSpacing(0)
 
     mw.model_combo = QComboBox()
     mw.model_combo.addItems(MODEL_OPTIONS)
     mw.model_combo.setCurrentText(DEFAULT_MODEL)
     mw.model_combo.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("模型选择", mw.model_combo))
+    param_panel.addWidget(create_param_row("模型选择", mw.model_combo))
 
     mw.conf_spin = QDoubleSpinBox()
     mw.conf_spin.setRange(0.10, 0.95)
@@ -152,13 +152,13 @@ def setup_ui(mw):
     mw.conf_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
     mw.conf_spin.setToolTip("允许范围: 0.10 - 0.95")
     mw.conf_spin.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("置信度阈值", mw.conf_spin))
+    param_panel.addWidget(create_param_row("置信度阈值", mw.conf_spin))
 
     mw.image_size_combo = QComboBox()
     mw.image_size_combo.addItems([str(size) for size in IMAGE_SIZE_OPTIONS])
     mw.image_size_combo.setCurrentText(str(DEFAULT_IMAGE_SIZE))
     mw.image_size_combo.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("检测尺寸", mw.image_size_combo))
+    param_panel.addWidget(create_param_row("检测尺寸", mw.image_size_combo))
 
     mw.max_age_spin = QSpinBox()
     mw.max_age_spin.setRange(1, 300)
@@ -166,7 +166,7 @@ def setup_ui(mw):
     mw.max_age_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
     mw.max_age_spin.setToolTip("允许范围: 1 - 300")
     mw.max_age_spin.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("最大丢失帧数", mw.max_age_spin))
+    param_panel.addWidget(create_param_row("最大丢失帧数", mw.max_age_spin))
 
     mw.n_init_spin = QSpinBox()
     mw.n_init_spin.setRange(1, 30)
@@ -174,7 +174,7 @@ def setup_ui(mw):
     mw.n_init_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
     mw.n_init_spin.setToolTip("允许范围: 1 - 30")
     mw.n_init_spin.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("确认所需帧数", mw.n_init_spin))
+    param_panel.addWidget(create_param_row("确认所需帧数", mw.n_init_spin))
 
     mw.detect_interval_spin = QSpinBox()
     mw.detect_interval_spin.setRange(1, 30)
@@ -182,34 +182,35 @@ def setup_ui(mw):
     mw.detect_interval_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
     mw.detect_interval_spin.setToolTip("允许范围: 1 - 30")
     mw.detect_interval_spin.setFixedWidth(96)
-    param_panel.addLayout(create_param_row("抽帧间隔", mw.detect_interval_spin))
+    param_panel.addWidget(create_param_row("抽帧间隔", mw.detect_interval_spin))
     param_panel.addStretch()
 
     param_widget = QWidget()
     param_widget.setLayout(param_panel)
     param_widget.setFixedWidth(230)
     bottom_layout.addWidget(param_widget)
-    bottom_layout.addSpacerItem(QSpacerItem(48, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    bottom_layout.addSpacerItem(QSpacerItem(40, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 中部统计面板
     stats_panel = QVBoxLayout()
-    stats_panel.setContentsMargins(0, 20, 0, 0)
+    stats_panel.setContentsMargins(0, 0, 0, 0)
+    stats_panel.setSpacing(0)
     mw.label_crossing = QLabel("累积通过人数: 0")
     mw.label_inside = QLabel("区域内当前人数: 0")
-    mw.label_span_time = QLabel("时段: --")
     mw.label_span_count = QLabel("时段通过: 0")
-    stats_panel.addWidget(mw.label_crossing)
-    stats_panel.addWidget(mw.label_inside)
-    stats_panel.addWidget(mw.label_span_time)
-    stats_panel.addWidget(mw.label_span_count)
+    stats_panel.addWidget(create_fixed_stats_row(mw.label_crossing))
+    stats_panel.addWidget(create_fixed_stats_row(mw.label_inside))
+    stats_panel.addWidget(create_empty_stats_row())
+    stats_panel.addWidget(create_span_input_row(mw))
+    stats_panel.addWidget(create_fixed_stats_row(mw.label_span_count))
     stats_panel.addStretch()
 
     stats_widget = QWidget()
     stats_widget.setLayout(stats_panel)
-    stats_widget.setFixedWidth(200)
+    stats_widget.setFixedWidth(230)
 
     bottom_layout.addWidget(stats_widget)
-    bottom_layout.addSpacerItem(QSpacerItem(8, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
+    bottom_layout.addSpacerItem(QSpacerItem(6, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 曲线图容器
     curve_container = QHBoxLayout()
@@ -244,8 +245,65 @@ def setup_ui(mw):
     mw.info_text = mw.ax.text(0.5, 0.95, "", transform=mw.ax.transAxes,
                               ha='center', va='top', fontsize=9, color='red',
                               bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+    mw.span_patch = None
+
+
+def create_span_input_row(mw):
+    row_widget = QWidget()
+    row_widget.setFixedHeight(36)
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(4)
+    row.setAlignment(Qt.AlignVCenter)
+    input_height = 26
+    button_height = 30
+
+    row.addWidget(QLabel("时段"))
+
+    mw.span_start_edit = QLineEdit()
+    mw.span_start_edit.setPlaceholderText("开始")
+    mw.span_start_edit.setFixedSize(48, input_height)
+    mw.span_start_edit.returnPressed.connect(mw.on_manual_span_stat)
+    row.addWidget(mw.span_start_edit)
+
+    row.addWidget(QLabel("-"))
+
+    mw.span_end_edit = QLineEdit()
+    mw.span_end_edit.setPlaceholderText("结束")
+    mw.span_end_edit.setFixedSize(48, input_height)
+    mw.span_end_edit.returnPressed.connect(mw.on_manual_span_stat)
+    row.addWidget(mw.span_end_edit)
+
+    mw.btn_span_stat = QPushButton("统计")
+    mw.btn_span_stat.setFixedSize(44, button_height)
+    mw.btn_span_stat.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    mw.btn_span_stat.clicked.connect(mw.on_manual_span_stat)
+    row.addWidget(mw.btn_span_stat)
+    row.addStretch()
+    row_widget.setLayout(row)
+    return row_widget
+
+
+def create_fixed_stats_row(widget):
+    row_widget = QWidget()
+    row_widget.setFixedHeight(36)
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setAlignment(Qt.AlignVCenter)
+    row.addWidget(widget)
+    row.addStretch()
+    row_widget.setLayout(row)
+    return row_widget
+
+
+def create_empty_stats_row():
+    row_widget = QWidget()
+    row_widget.setFixedHeight(36)
+    return row_widget
 
 def create_param_row(label_text, editor):
+    row_widget = QWidget()
+    row_widget.setFixedHeight(36)
     row = QHBoxLayout()
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(8)
@@ -254,7 +312,8 @@ def create_param_row(label_text, editor):
     row.addWidget(label)
     row.addWidget(editor)
     row.addStretch()
-    return row
+    row_widget.setLayout(row)
+    return row_widget
 
 
 def create_concentric_icon(size=20, color=QColor(0, 0, 0)):

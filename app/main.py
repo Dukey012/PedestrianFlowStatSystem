@@ -135,8 +135,8 @@ class MainWindow(QMainWindow):
         self.curve_counts.clear()
         self.crossing_history.clear()
         self.update_stats(0, 0)
+        self.clear_span_selection()
         self.update_curve()
-        self.label_span_time.setText("时段: --")
         self.label_span_count.setText("时段通过: 0")
 
     def show_frame_at(self, idx):
@@ -387,6 +387,15 @@ class MainWindow(QMainWindow):
     def on_crossing_record(self, frame_idx, crossing):
         self.crossing_history.append((frame_idx, crossing))
 
+    def clear_span_selection(self):
+        if hasattr(self, "span_start_edit"):
+            self.span_start_edit.clear()
+        if hasattr(self, "span_end_edit"):
+            self.span_end_edit.clear()
+        if getattr(self, "span_patch", None):
+            self.span_patch.remove()
+            self.span_patch = None
+
     def update_curve(self):
         total_sec = self.total_frames / self.fps if self.fps > 0 else 10
         if not self.curve_frames:
@@ -411,9 +420,70 @@ class MainWindow(QMainWindow):
         self.ax.autoscale_view(scalex=False, scaley=True)
         self.canvas.draw_idle()
 
+    def parse_time_input(self, text):
+        text = text.strip()
+        if not text:
+            raise ValueError("请输入开始时间和结束时间")
+
+        parts = text.split(":")
+        try:
+            if len(parts) == 1:
+                seconds = float(parts[0])
+            elif len(parts) == 2:
+                minutes = int(parts[0])
+                seconds = minutes * 60 + float(parts[1])
+            else:
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError("时间格式应为 秒 或 分:秒，例如 12 或 1:25") from exc
+
+        if seconds < 0:
+            raise ValueError("时间不能小于 0")
+        return seconds
+
+    def on_manual_span_stat(self):
+        if self.total_frames <= 0 or self.fps <= 0:
+            QMessageBox.warning(self, "提示", "请先打开视频")
+            return
+        try:
+            start_sec = self.parse_time_input(self.span_start_edit.text())
+            end_sec = self.parse_time_input(self.span_end_edit.text())
+            self.update_span_stats(
+                start_sec,
+                end_sec,
+                update_inputs=True,
+                update_chart=True,
+                warn_if_out_of_range=True,
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "提示", str(exc))
+
     def on_span_select(self, xmin, xmax):
-        start_frame = int(xmin * self.fps)
-        end_frame = int(xmax * self.fps)
+        self.update_span_stats(xmin, xmax, update_inputs=True, update_chart=True)
+
+    def update_span_stats(
+        self,
+        start_sec,
+        end_sec,
+        update_inputs=True,
+        update_chart=True,
+        warn_if_out_of_range=False,
+    ):
+        if self.total_frames <= 0 or self.fps <= 0:
+            return
+
+        total_sec = self.total_frames / self.fps
+        if start_sec > total_sec or end_sec > total_sec:
+            if warn_if_out_of_range:
+                QMessageBox.warning(self, "提示", "输入时段不能超过视频总时长")
+                return
+            start_sec = min(start_sec, total_sec)
+            end_sec = min(end_sec, total_sec)
+        if start_sec > end_sec:
+            start_sec, end_sec = end_sec, start_sec
+
+        start_frame = int(start_sec * self.fps)
+        end_frame = int(end_sec * self.fps)
         if start_frame < 0: start_frame = 0
         if end_frame >= self.total_frames: end_frame = self.total_frames - 1
         crossing_start = 0
@@ -422,11 +492,19 @@ class MainWindow(QMainWindow):
             if f <= start_frame: crossing_start = c
             if f <= end_frame: crossing_end = c
         interval_crossing = crossing_end - crossing_start
-        start_time = self.format_time(xmin)
-        end_time = self.format_time(xmax)
-        self.label_span_time.setText(f"时段: {start_time} - {end_time}")
+
+        if update_inputs:
+            self.span_start_edit.setText(self.format_time(start_sec))
+            self.span_end_edit.setText(self.format_time(end_sec))
+        if update_chart:
+            self.highlight_span(start_sec, end_sec)
         self.label_span_count.setText(f"时段通过: {interval_crossing}")
         self.canvas.draw_idle()
+
+    def highlight_span(self, start_sec, end_sec):
+        if self.span_patch:
+            self.span_patch.remove()
+        self.span_patch = self.ax.axvspan(start_sec, end_sec, alpha=0.2, color="red")
 
     def on_region_changed(self, coords):
         self.count_region = [(coords[0], coords[1]), (coords[2], coords[3]),
