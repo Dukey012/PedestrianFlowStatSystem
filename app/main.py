@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.last_processed_frame_idx = -1
         self.last_submitted_frame_idx = -1
         self.detection_stream_finished = False
+        self.detection_session_id = 0
 
         # 进度条更新保护标志
         self.updating_progress = False
@@ -50,6 +51,8 @@ class MainWindow(QMainWindow):
         self.total_crossing = 0
         self.current_in_region = 0
         self.stats_db_path = None
+        self.stats_time_offset_sec = 0.0
+        self.stats_time_origin_set = False
 
         # 曲线数据
         self.curve_frames = []
@@ -150,6 +153,8 @@ class MainWindow(QMainWindow):
         self.total_crossing = 0
         self.current_in_region = 0
         self.stats_db_path = None
+        self.stats_time_offset_sec = 0.0
+        self.stats_time_origin_set = False
         self.curve_frames.clear()
         self.curve_counts.clear()
         self.update_stats(0, 0)
@@ -170,6 +175,21 @@ class MainWindow(QMainWindow):
                 self.current_frame_idx = idx
                 if self.is_replay:
                     self._update_replay_stats_at(idx)
+
+    def _read_next_frame(self):
+        if not self.cap:
+            return None, None
+        frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        ret, frame = self.cap.read()
+        if not ret:
+            return None, None
+        return frame_idx, frame
+
+    def _align_capture_after_current_frame(self):
+        if not self.cap:
+            return
+        next_frame_idx = min(max(self.current_frame_idx + 1, 0), self.total_frames)
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, next_frame_idx)
 
     def frame_to_pixmap(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -258,6 +278,8 @@ class MainWindow(QMainWindow):
         self.last_processed_frame_idx = self.current_frame_idx
         self.last_submitted_frame_idx = self.current_frame_idx
         self.detection_stream_finished = False
+        self.stats_time_offset_sec = 0.0
+        self.stats_time_origin_set = False
         self.btn_detect.setIcon(self.detect_icon_active)
         self.btn_detect.setToolTip("停止检测")
         self.speed_combo.setEnabled(False)
@@ -272,12 +294,14 @@ class MainWindow(QMainWindow):
         if not self.is_detecting:
             return
         self.is_detecting = False
+        self.detection_session_id += 1
         self.btn_detect.setChecked(False)
         self.btn_detect.setIcon(self.detect_icon_normal)
         self.btn_detect.setToolTip("检测")
         if self.detector_thread:
             self.detector_thread.stop()
             self.detector_thread = None
+        self._align_capture_after_current_frame()
         self.last_submitted_frame_idx = self.last_processed_frame_idx
         self.detection_stream_finished = False
         self.speed_combo.setEnabled(True)
@@ -288,7 +312,10 @@ class MainWindow(QMainWindow):
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
 
-    def on_detection_error(self, message):
+    def on_detection_error(self, message, session_id=None):
+        if session_id is not None and session_id != self.detection_session_id:
+            return
+        self.detection_session_id += 1
         self.pause_video()
         self.is_detecting = False
         self.btn_detect.setChecked(False)
@@ -323,6 +350,9 @@ class MainWindow(QMainWindow):
         out_path = os.path.join(output_dir, f"output_{video_basename}_{model_name}_{timestamp}.mp4")
 
         try:
+            self._align_capture_after_current_frame()
+            self.detection_session_id += 1
+            session_id = self.detection_session_id
             self.stats_db_path = db_path
             self.detector_thread = DetectionThread()
             self.detector_thread.set_model(os.path.join("models", f"{model_name}.pt"))
@@ -344,10 +374,18 @@ class MainWindow(QMainWindow):
                 int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             )
-            self.detector_thread.frame_processed.connect(self.on_frame_processed)
-            self.detector_thread.stats_updated.connect(self.update_stats)
-            self.detector_thread.curve_data.connect(self.on_curve_data)
-            self.detector_thread.error_occurred.connect(self.on_detection_error)
+            self.detector_thread.frame_processed.connect(
+                lambda frame_idx, frame, sid=session_id: self.on_frame_processed(frame_idx, frame, sid)
+            )
+            self.detector_thread.stats_updated.connect(
+                lambda crossing, inside, sid=session_id: self.on_detection_stats_updated(crossing, inside, sid)
+            )
+            self.detector_thread.curve_data.connect(
+                lambda frame_idx, count, sid=session_id: self.on_curve_data(frame_idx, count, sid)
+            )
+            self.detector_thread.error_occurred.connect(
+                lambda message, sid=session_id: self.on_detection_error(message, sid)
+            )
             self.detector_thread.set_region(self.count_region)
             self.detector_thread.start()
             self.last_processed_frame_idx = self.current_frame_idx
@@ -447,12 +485,11 @@ class MainWindow(QMainWindow):
                 self._pump_detection_frames()
                 return
 
-            ret, frame = self.cap.read()
-            if not ret:
+            frame_idx, frame = self._read_next_frame()
+            if frame is None:
                 self.pause_video()
                 return
 
-            frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
             self.current_frame_idx = frame_idx
             self.set_progress(self.current_frame_idx)
             seconds = self.current_frame_idx / self.fps
@@ -476,17 +513,23 @@ class MainWindow(QMainWindow):
 
         max_inflight = max(2, self.detect_interval_spin.value() + 1)
         while self.last_submitted_frame_idx - self.last_processed_frame_idx < max_inflight:
-            ret, frame = self.cap.read()
-            if not ret:
+            frame_idx, frame = self._read_next_frame()
+            if frame is None:
                 self.detection_stream_finished = True
                 self.detector_thread.finish_stream()
                 self.pause_video()
                 return
-            frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            if not self.stats_time_origin_set:
+                self.stats_time_offset_sec = frame_idx / self.fps if self.fps > 0 else 0.0
+                self.stats_time_origin_set = True
             self.last_submitted_frame_idx = frame_idx
             self.detector_thread.process_frame(frame, frame_idx)
 
-    def on_frame_processed(self, frame_idx, frame):
+    def on_frame_processed(self, frame_idx, frame, session_id=None):
+        if session_id is not None and session_id != self.detection_session_id:
+            return
+        if not self.is_detecting:
+            return
         if frame_idx < self.last_processed_frame_idx:
             return
         self.last_processed_frame_idx = frame_idx
@@ -502,13 +545,22 @@ class MainWindow(QMainWindow):
         self.video_label.setPixmap(pix)
         self._pump_detection_frames()
 
+    def on_detection_stats_updated(self, crossing, inside, session_id):
+        if session_id != self.detection_session_id or not self.is_detecting:
+            return
+        self.update_stats(crossing, inside)
+
     def update_stats(self, crossing, inside):
         self.total_crossing = crossing
         self.current_in_region = inside
         self.label_crossing.setText(f"累积通过人数: {crossing}")
         self.label_inside.setText(f"区域内当前人数: {inside}")
 
-    def on_curve_data(self, frame_idx, count):
+    def on_curve_data(self, frame_idx, count, session_id=None):
+        if session_id is not None and session_id != self.detection_session_id:
+            return
+        if session_id is not None and not self.is_detecting:
+            return
         self.curve_frames.append(frame_idx)
         self.curve_counts.append(count)
         self.update_curve()
@@ -611,11 +663,12 @@ class MainWindow(QMainWindow):
         if not self.stats_db_path:
             QMessageBox.warning(self, "提示", "未找到当前统计数据库")
             return
+        query_start_sec, query_end_sec = self._to_stats_time_range(start_sec, end_sec)
         try:
             interval_crossing = DetectionStore.count_crossings_between(
                 self.stats_db_path,
-                start_sec,
-                end_sec,
+                query_start_sec,
+                query_end_sec,
             )
         except DetectionPipelineError as exc:
             QMessageBox.warning(self, "提示", str(exc))
@@ -628,6 +681,19 @@ class MainWindow(QMainWindow):
             self.highlight_span(start_sec, end_sec)
         self.label_span_count.setText(f"时段通过: {interval_crossing}")
         self.canvas.draw_idle()
+
+    def _to_stats_time_range(self, start_sec, end_sec):
+        if self.is_replay:
+            return start_sec, end_sec
+
+        offset = self.stats_time_offset_sec if self.stats_time_origin_set else 0.0
+        query_start_sec = start_sec - offset
+        query_end_sec = end_sec - offset
+        if query_end_sec < 0:
+            return 0.0, 0.0
+        if query_start_sec <= 0:
+            query_start_sec = -1.0
+        return query_start_sec, max(0.0, query_end_sec)
 
     def highlight_span(self, start_sec, end_sec):
         if self.span_patch:

@@ -58,7 +58,9 @@ class DetectionStore:
                     tracker_n_init INTEGER,
                     detect_interval INTEGER,
                     fps REAL,
-                    total_frames INTEGER
+                    total_frames INTEGER,
+                    source_start_frame_idx INTEGER,
+                    source_start_second REAL
                 )
                 """
             )
@@ -122,7 +124,7 @@ class DetectionStore:
         try:
             self.cursor.execute("DELETE FROM detection_params")
             self.cursor.execute(
-                "INSERT INTO detection_params VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO detection_params VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     params.get("model_name", ""),
                     params.get("conf_threshold", 0.0),
@@ -132,6 +134,8 @@ class DetectionStore:
                     params.get("detect_interval", 0),
                     params.get("fps", 0.0),
                     params.get("total_frames", 0),
+                    params.get("source_start_frame_idx", 0),
+                    params.get("source_start_second", 0.0),
                 ),
             )
             self.conn.commit()
@@ -202,7 +206,8 @@ class DetectionStore:
                 row = conn.execute(
                     """
                     SELECT model_name, conf_threshold, image_size, tracker_max_age,
-                           tracker_n_init, detect_interval, fps, total_frames
+                           tracker_n_init, detect_interval, fps, total_frames,
+                           source_start_frame_idx, source_start_second
                     FROM detection_params
                     LIMIT 1
                     """
@@ -220,6 +225,8 @@ class DetectionStore:
             "detect_interval": row[5],
             "fps": row[6],
             "total_frames": row[7],
+            "source_start_frame_idx": row[8],
+            "source_start_second": row[9],
         }
 
     @staticmethod

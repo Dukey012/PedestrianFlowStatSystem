@@ -30,6 +30,7 @@ class DetectionThread(QThread):
         self.first_frame_idx = None
         self.previous_snapshot = None
         self.store_closed = False
+        self.params_saved = False
 
         self.model_path = "models/yolo11n.pt"
         self.fps = 25.0
@@ -90,8 +91,6 @@ class DetectionThread(QThread):
     def run(self):
         try:
             self.store.open()
-            if self.param_snapshot:
-                self.store.save_detection_params(self.param_snapshot)
             self.load_model()
             while True:
                 self.mutex.lock()
@@ -113,7 +112,7 @@ class DetectionThread(QThread):
                 if not self.running:
                     break
 
-            current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
+            current_sec = self._relative_second(self.current_frame_idx)
             self._close_store(current_sec)
         except DetectionPipelineError as exc:
             self.running = False
@@ -142,8 +141,7 @@ class DetectionThread(QThread):
         self.mutex.unlock()
 
     def _process_input_frame(self, frame, frame_idx):
-        if self.first_frame_idx is None:
-            self.first_frame_idx = frame_idx
+        self._initialize_timeline(frame_idx)
         self.current_frame_idx = frame_idx
         self.pending_frames.append((frame_idx, frame))
 
@@ -175,7 +173,8 @@ class DetectionThread(QThread):
         if self.detector is None or self.tracker is None:
             return TrackSnapshot(frame_idx, [], 0, 0)
 
-        current_sec = frame_idx / self.fps if self.fps > 0 else 0
+        relative_frame_idx = self._relative_frame_idx(frame_idx)
+        current_sec = self._relative_second(frame_idx)
         detections = self.detector.detect(frame)
         tracks = self.tracker.update(detections, frame)
         snapshot = self.counter.process_tracks(tracks, frame.shape, current_sec)
@@ -183,8 +182,8 @@ class DetectionThread(QThread):
         for track_id, enter_sec, leave_sec in snapshot.duration_records:
             self.store.record_duration(track_id, enter_sec, leave_sec)
         for track_id, crossing_sec in snapshot.crossing_events:
-            self.store.record_crossing_event(track_id, frame_idx, crossing_sec)
-        self.store.record_second_stats(frame_idx, self.fps, snapshot.active_ids)
+            self.store.record_crossing_event(track_id, relative_frame_idx, crossing_sec)
+        self.store.record_second_stats(relative_frame_idx, self.fps, snapshot.active_ids)
 
         self.stats_updated.emit(snapshot.total_crossing, snapshot.inside_count)
         self.curve_data.emit(frame_idx, snapshot.inside_count)
@@ -247,8 +246,8 @@ class DetectionThread(QThread):
 
     def _emit_processed_frame(self, frame_idx, frame, tracks, total_crossing, inside_count):
         processed = frame.copy()
-        current_sec = frame_idx / self.fps if self.fps > 0 else 0
-        self._draw_overlay(processed, tracks, total_crossing, inside_count, current_sec)
+        display_sec = frame_idx / self.fps if self.fps > 0 else 0
+        self._draw_overlay(processed, tracks, total_crossing, inside_count, display_sec)
         self.recorder.write(processed, frame_idx, frame)
         self.frame_processed.emit(frame_idx, processed)
 
@@ -277,7 +276,7 @@ class DetectionThread(QThread):
 
     def _close_store_safely(self):
         try:
-            current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
+            current_sec = self._relative_second(self.current_frame_idx)
             self._close_store(current_sec)
         except Exception:
             pass
@@ -287,6 +286,27 @@ class DetectionThread(QThread):
             return
         self.store.close(self.counter.get_active_duration_records(current_sec))
         self.store_closed = True
+
+    def _initialize_timeline(self, frame_idx):
+        if self.first_frame_idx is not None:
+            return
+        self.first_frame_idx = frame_idx
+        if self.param_snapshot and not self.params_saved:
+            params = dict(self.param_snapshot)
+            params["source_start_frame_idx"] = frame_idx
+            params["source_start_second"] = frame_idx / self.fps if self.fps > 0 else 0.0
+            self.store.save_detection_params(params)
+            self.params_saved = True
+
+    def _relative_frame_idx(self, frame_idx):
+        if self.first_frame_idx is None:
+            return 0
+        return max(0, frame_idx - self.first_frame_idx)
+
+    def _relative_second(self, frame_idx):
+        if self.fps <= 0:
+            return 0.0
+        return self._relative_frame_idx(frame_idx) / self.fps
 
     @staticmethod
     def _format_time(seconds):
