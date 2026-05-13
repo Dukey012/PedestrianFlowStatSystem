@@ -34,6 +34,9 @@ class MainWindow(QMainWindow):
         self.fps = 25
         self.total_frames = 0
         self.current_frame_idx = 0
+        self.last_processed_frame_idx = -1
+        self.last_submitted_frame_idx = -1
+        self.detection_stream_finished = False
 
         # 进度条更新保护标志
         self.updating_progress = False
@@ -122,6 +125,9 @@ class MainWindow(QMainWindow):
         self.progress_slider.setRange(0, self.total_frames - 1)
         self.set_progress(0)
         self.current_frame_idx = 0
+        self.last_processed_frame_idx = -1
+        self.last_submitted_frame_idx = -1
+        self.detection_stream_finished = False
         self.is_replay = False
         self.btn_detect.setEnabled(True)
         self.show_frame_at(0)
@@ -173,15 +179,21 @@ class MainWindow(QMainWindow):
             return
         self.is_playing = True
         self.btn_play.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
-        interval = max(1, int(1000 / (self.fps * self.speed)))
-        self.timer.start(interval)
+        self.timer.start(self._playback_timer_interval())
         if self.is_detecting and (self.detector_thread is None or not self.detector_thread.isRunning()):
             self._launch_detection_thread()
+        if self.is_detecting:
+            self._pump_detection_frames()
 
     def pause_video(self):
         self.is_playing = False
         self.btn_play.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.timer.stop()
+
+    def _playback_timer_interval(self):
+        if self.is_detecting:
+            return max(10, int(1000 / self.fps)) if self.fps > 0 else 40
+        return max(1, int(1000 / (self.fps * self.speed)))
 
     def stop_video(self):
         self.pause_video()
@@ -228,6 +240,9 @@ class MainWindow(QMainWindow):
         if self.is_detecting:
             return
         self.is_detecting = True
+        self.last_processed_frame_idx = self.current_frame_idx
+        self.last_submitted_frame_idx = self.current_frame_idx
+        self.detection_stream_finished = False
         self.btn_detect.setIcon(self.detect_icon_active)
         self.btn_detect.setToolTip("停止检测")
         self.speed_combo.setEnabled(False)
@@ -235,6 +250,8 @@ class MainWindow(QMainWindow):
         self.video_label.set_region_enabled(False)
         if self.is_playing:
             self._launch_detection_thread()
+            self.timer.setInterval(self._playback_timer_interval())
+            self._pump_detection_frames()
 
     def stop_detection(self):
         if not self.is_detecting:
@@ -246,9 +263,13 @@ class MainWindow(QMainWindow):
         if self.detector_thread:
             self.detector_thread.stop()
             self.detector_thread = None
+        self.last_submitted_frame_idx = self.last_processed_frame_idx
+        self.detection_stream_finished = False
         self.speed_combo.setEnabled(True)
         self.set_param_panel_enabled(True)
         self.video_label.set_region_enabled(True)
+        if self.is_playing:
+            self.timer.setInterval(self._playback_timer_interval())
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
 
@@ -265,6 +286,8 @@ class MainWindow(QMainWindow):
         self.speed_combo.setEnabled(True)
         self.set_param_panel_enabled(True)
         self.video_label.set_region_enabled(True)
+        if self.is_playing:
+            self.timer.setInterval(self._playback_timer_interval())
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
         QMessageBox.critical(self, "检测错误", message)
@@ -308,6 +331,9 @@ class MainWindow(QMainWindow):
             self.detector_thread.error_occurred.connect(self.on_detection_error)
             self.detector_thread.set_region(self.count_region)
             self.detector_thread.start()
+            self.last_processed_frame_idx = self.current_frame_idx
+            self.last_submitted_frame_idx = self.current_frame_idx
+            self.detection_stream_finished = False
         except DetectionPipelineError as exc:
             self.detector_thread = None
             self.on_detection_error(str(exc))
@@ -342,6 +368,9 @@ class MainWindow(QMainWindow):
         self.progress_slider.setRange(0, self.total_frames - 1)
         self.set_progress(0)
         self.current_frame_idx = 0
+        self.last_processed_frame_idx = -1
+        self.last_submitted_frame_idx = -1
+        self.detection_stream_finished = False
         self.is_replay = True
         self.btn_detect.setEnabled(False)
         self.speed = 1.0
@@ -354,24 +383,62 @@ class MainWindow(QMainWindow):
     # ================== 帧更新循环 ==================
     def update_frame(self):
         if self.cap and self.is_playing:
-            ret, frame = self.cap.read()
-            if ret:
-                self.current_frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-                self.set_progress(self.current_frame_idx)
-                seconds = self.current_frame_idx / self.fps
-                total_seconds = self.total_frames / self.fps
-                self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
-                if self.is_detecting and self.detector_thread and self.detector_thread.isRunning():
-                    self.detector_thread.process_frame(frame, self.current_frame_idx)
-                else:
-                    pix = self.frame_to_pixmap(frame)
-                    self.video_label.setPixmap(pix)
-            else:
-                self.pause_video()
+            if self.is_detecting and self.detector_thread and self.detector_thread.isRunning():
+                self._pump_detection_frames()
+                return
 
-    def on_frame_processed(self, frame):
+            ret, frame = self.cap.read()
+            if not ret:
+                self.pause_video()
+                return
+
+            frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            self.current_frame_idx = frame_idx
+            self.set_progress(self.current_frame_idx)
+            seconds = self.current_frame_idx / self.fps
+            total_seconds = self.total_frames / self.fps
+            self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
+            pix = self.frame_to_pixmap(frame)
+            self.video_label.setPixmap(pix)
+
+    def _pump_detection_frames(self):
+        if (
+            not self.cap
+            or not self.is_playing
+            or not self.is_detecting
+            or not self.detector_thread
+            or not self.detector_thread.isRunning()
+            or self.detection_stream_finished
+        ):
+            return
+
+        max_inflight = max(2, self.detect_interval_spin.value() + 1)
+        while self.last_submitted_frame_idx - self.last_processed_frame_idx < max_inflight:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.detection_stream_finished = True
+                self.detector_thread.finish_stream()
+                self.pause_video()
+                return
+            frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            self.last_submitted_frame_idx = frame_idx
+            self.detector_thread.process_frame(frame, frame_idx)
+
+    def on_frame_processed(self, frame_idx, frame):
+        if frame_idx < self.last_processed_frame_idx:
+            return
+        self.last_processed_frame_idx = frame_idx
+        self.current_frame_idx = frame_idx
+        self.set_progress(self.current_frame_idx)
+        seconds = self.current_frame_idx / self.fps
+        total_seconds = self.total_frames / self.fps
+        self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
+        if hasattr(self, "pos_line"):
+            self.pos_line.set_xdata([seconds])
+            self.canvas.draw_idle()
         pix = self.frame_to_pixmap(frame)
         self.video_label.setPixmap(pix)
+        self._pump_detection_frames()
 
     def update_stats(self, crossing, inside):
         self.total_crossing = crossing

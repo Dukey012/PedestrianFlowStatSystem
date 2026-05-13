@@ -6,12 +6,13 @@ from core.exceptions import DetectionPipelineError
 from core.counting import RegionCounter
 from core.detection import PersonDetector
 from core.tracking import PersonTracker
+from core.types import TrackSnapshot, TrackState
 from services.recorder import VideoRecorder
 from storage.sqlite_store import DetectionStore
 
 
 class DetectionThread(QThread):
-    frame_processed = Signal(np.ndarray)
+    frame_processed = Signal(int, np.ndarray)
     stats_updated = Signal(int, int)
     curve_data = Signal(int, int)
     crossing_signal = Signal(int, int)
@@ -22,9 +23,13 @@ class DetectionThread(QThread):
         self.running = True
         self.mutex = QMutex()
         self.cond = QWaitCondition()
-        self.current_frame = None
+        self.input_frames = []
+        self.pending_frames = []
         self.current_frame_idx = 0
-        self.new_frame_available = False
+        self.flush_requested = False
+        self.first_frame_idx = None
+        self.previous_snapshot = None
+        self.store_closed = False
 
         self.model_path = "models/yolo11n.pt"
         self.fps = 25.0
@@ -82,25 +87,28 @@ class DetectionThread(QThread):
         try:
             self.store.open()
             self.load_model()
-            while self.running:
+            while True:
                 self.mutex.lock()
-                if not self.new_frame_available:
+                while self.running and not self.input_frames and not self.flush_requested:
                     self.cond.wait(self.mutex)
-                if not self.running:
+                if not self.running and not self.input_frames and not self.flush_requested:
                     self.mutex.unlock()
                     break
-                frame = self.current_frame.copy() if self.current_frame is not None else None
-                frame_idx = self.current_frame_idx
-                self.new_frame_available = False
+                frames = self.input_frames
+                self.input_frames = []
+                should_flush = self.flush_requested or not self.running
+                self.flush_requested = False
                 self.mutex.unlock()
 
-                if frame is not None:
-                    processed = self._detect_and_track(frame, frame_idx)
-                    self.recorder.write(processed, frame_idx, frame)
-                    self.frame_processed.emit(processed)
+                for frame_idx, frame in frames:
+                    self._process_input_frame(frame, frame_idx)
+                if should_flush:
+                    self._flush_pending_frames()
+                if not self.running:
+                    break
 
             current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
-            self.store.close(self.counter.get_active_duration_records(current_sec))
+            self._close_store(current_sec)
         except DetectionPipelineError as exc:
             self.running = False
             self.error_occurred.emit(str(exc))
@@ -113,15 +121,53 @@ class DetectionThread(QThread):
 
     def process_frame(self, frame, frame_idx):
         self.mutex.lock()
-        self.current_frame = frame
+        if not self.running:
+            self.mutex.unlock()
+            return
         self.current_frame_idx = frame_idx
-        self.new_frame_available = True
+        self.input_frames.append((frame_idx, frame.copy()))
         self.cond.wakeOne()
         self.mutex.unlock()
 
+    def finish_stream(self):
+        self.mutex.lock()
+        self.flush_requested = True
+        self.cond.wakeOne()
+        self.mutex.unlock()
+
+    def _process_input_frame(self, frame, frame_idx):
+        if self.first_frame_idx is None:
+            self.first_frame_idx = frame_idx
+        self.current_frame_idx = frame_idx
+        self.pending_frames.append((frame_idx, frame))
+
+        if not self._should_detect(frame_idx):
+            return
+
+        snapshot = self._detect_and_track(frame, frame_idx)
+        if self.previous_snapshot is None:
+            self._emit_processed_frame(
+                frame_idx,
+                frame,
+                snapshot.tracks,
+                snapshot.total_crossing,
+                snapshot.inside_count,
+            )
+        else:
+            self._emit_interpolated_frames(self.previous_snapshot, snapshot)
+
+        self.previous_snapshot = snapshot
+        self.pending_frames = []
+
+    def _should_detect(self, frame_idx):
+        interval = max(1, int(self.detect_interval))
+        if self.previous_snapshot is None:
+            return True
+        return (frame_idx - self.first_frame_idx) % interval == 0
+
     def _detect_and_track(self, frame, frame_idx):
         if self.detector is None or self.tracker is None:
-            return frame
+            return TrackSnapshot(frame_idx, [], 0, 0)
 
         current_sec = frame_idx / self.fps if self.fps > 0 else 0
         detections = self.detector.detect(frame)
@@ -132,12 +178,71 @@ class DetectionThread(QThread):
             self.store.record_duration(track_id, enter_sec, leave_sec)
         self.store.record_second_stats(frame_idx, self.fps, snapshot.active_ids)
 
-        self._draw_overlay(frame, tracks, snapshot.total_crossing, snapshot.inside_count, current_sec)
-
         self.stats_updated.emit(snapshot.total_crossing, snapshot.inside_count)
         self.curve_data.emit(frame_idx, snapshot.inside_count)
         self.crossing_signal.emit(frame_idx, snapshot.total_crossing)
-        return frame
+        return TrackSnapshot(
+            frame_idx=frame_idx,
+            tracks=tracks,
+            total_crossing=snapshot.total_crossing,
+            inside_count=snapshot.inside_count,
+        )
+
+    def _emit_interpolated_frames(self, start_snapshot, end_snapshot):
+        for frame_idx, frame in self.pending_frames:
+            if frame_idx <= start_snapshot.frame_idx:
+                continue
+            if frame_idx >= end_snapshot.frame_idx:
+                tracks = end_snapshot.tracks
+                total_crossing = end_snapshot.total_crossing
+                inside_count = end_snapshot.inside_count
+            else:
+                tracks = self._interpolate_tracks(start_snapshot, end_snapshot, frame_idx)
+                total_crossing = start_snapshot.total_crossing
+                inside_count = start_snapshot.inside_count
+            self._emit_processed_frame(frame_idx, frame, tracks, total_crossing, inside_count)
+
+    def _flush_pending_frames(self):
+        if not self.pending_frames:
+            return
+        snapshot = self.previous_snapshot
+        if snapshot is None:
+            for frame_idx, frame in self.pending_frames:
+                self._emit_processed_frame(frame_idx, frame, [], 0, 0)
+        else:
+            for frame_idx, frame in self.pending_frames:
+                if frame_idx <= snapshot.frame_idx:
+                    continue
+                self._emit_processed_frame(
+                    frame_idx,
+                    frame,
+                    snapshot.tracks,
+                    snapshot.total_crossing,
+                    snapshot.inside_count,
+                )
+        self.pending_frames = []
+
+    def _interpolate_tracks(self, start_snapshot, end_snapshot, frame_idx):
+        start_tracks = {track.track_id: track for track in start_snapshot.tracks}
+        end_tracks = {track.track_id: track for track in end_snapshot.tracks}
+        common_ids = start_tracks.keys() & end_tracks.keys()
+        span = max(1, end_snapshot.frame_idx - start_snapshot.frame_idx)
+        alpha = (frame_idx - start_snapshot.frame_idx) / span
+
+        tracks = []
+        for track_id in common_ids:
+            start_box = np.array(start_tracks[track_id].ltrb, dtype=np.float32)
+            end_box = np.array(end_tracks[track_id].ltrb, dtype=np.float32)
+            box = start_box * (1 - alpha) + end_box * alpha
+            tracks.append(TrackState(track_id=track_id, ltrb=tuple(float(v) for v in box)))
+        return tracks
+
+    def _emit_processed_frame(self, frame_idx, frame, tracks, total_crossing, inside_count):
+        processed = frame.copy()
+        current_sec = frame_idx / self.fps if self.fps > 0 else 0
+        self._draw_overlay(processed, tracks, total_crossing, inside_count, current_sec)
+        self.recorder.write(processed, frame_idx, frame)
+        self.frame_processed.emit(frame_idx, processed)
 
     def _draw_overlay(self, frame, tracks, total_crossing, inside_count, current_sec):
         region_pixels = self.counter.get_region_pixels(frame.shape)
@@ -165,9 +270,15 @@ class DetectionThread(QThread):
     def _close_store_safely(self):
         try:
             current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0
-            self.store.close(self.counter.get_active_duration_records(current_sec))
+            self._close_store(current_sec)
         except Exception:
             pass
+
+    def _close_store(self, current_sec):
+        if self.store_closed:
+            return
+        self.store.close(self.counter.get_active_duration_records(current_sec))
+        self.store_closed = True
 
     @staticmethod
     def _format_time(seconds):
@@ -176,9 +287,10 @@ class DetectionThread(QThread):
         return f"{minutes:02d}:{secs:02d}"
 
     def stop(self):
-        self.running = False
         self.mutex.lock()
-        self.new_frame_available = True
+        self.running = False
+        self.input_frames = []
+        self.flush_requested = True
         self.cond.wakeOne()
         self.mutex.unlock()
         self.wait()

@@ -20,3 +20,11 @@ class CountingSnapshot:
     inside_count: int
     active_ids: set[int]
     duration_records: list[tuple[int, float, float]]
+
+
+@dataclass(frozen=True)
+class TrackSnapshot:
+    frame_idx: int
+    tracks: list[TrackState]
+    total_crossing: int
+    inside_count: int
