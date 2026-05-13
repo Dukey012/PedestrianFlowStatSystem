@@ -133,58 +133,65 @@ def setup_ui(mw):
 
     # ------------------ 底部布局（参数面板 + 统计面板 + 曲线图） ------------------
     bottom_layout = QHBoxLayout()
-    bottom_layout.setSpacing(12)
+    bottom_layout.setSpacing(0)
 
     # 左侧参数面板
     param_panel = QVBoxLayout()
     param_panel.setContentsMargins(0, 8, 0, 0)
-    param_panel.setSpacing(4)
+    param_panel.setSpacing(6)
 
-    param_panel.addWidget(QLabel("模型选择"))
     mw.model_combo = QComboBox()
     mw.model_combo.addItems(MODEL_OPTIONS)
     mw.model_combo.setCurrentText(DEFAULT_MODEL)
-    mw.model_combo.setFixedWidth(118)
-    param_panel.addWidget(mw.model_combo)
+    mw.model_combo.setFixedWidth(96)
+    param_panel.addLayout(create_param_row("模型选择", mw.model_combo))
 
     mw.conf_spin = QDoubleSpinBox()
     mw.conf_spin.setRange(0.10, 0.95)
     mw.conf_spin.setSingleStep(0.05)
     mw.conf_spin.setDecimals(2)
     mw.conf_spin.setValue(DEFAULT_CONF_THRESHOLD)
-    mw.conf_spin.setFixedWidth(62)
+    mw.conf_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    mw.conf_spin.setToolTip("允许范围: 0.10 - 0.95")
+    mw.conf_spin.setFixedWidth(96)
     param_panel.addLayout(create_param_row("置信度阈值", mw.conf_spin))
 
-    param_panel.addWidget(QLabel("检测尺寸"))
     mw.image_size_combo = QComboBox()
     mw.image_size_combo.addItems([str(size) for size in IMAGE_SIZE_OPTIONS])
     mw.image_size_combo.setCurrentText(str(DEFAULT_IMAGE_SIZE))
-    mw.image_size_combo.setFixedWidth(118)
-    param_panel.addWidget(mw.image_size_combo)
+    mw.image_size_combo.setFixedWidth(96)
+    param_panel.addLayout(create_param_row("检测尺寸", mw.image_size_combo))
 
     mw.max_age_spin = QSpinBox()
     mw.max_age_spin.setRange(1, 300)
     mw.max_age_spin.setValue(DEFAULT_TRACKER_MAX_AGE)
-    mw.max_age_spin.setFixedWidth(62)
+    mw.max_age_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    mw.max_age_spin.setToolTip("允许范围: 1 - 300")
+    mw.max_age_spin.setFixedWidth(96)
     param_panel.addLayout(create_param_row("最大丢失帧数", mw.max_age_spin))
 
     mw.n_init_spin = QSpinBox()
     mw.n_init_spin.setRange(1, 30)
     mw.n_init_spin.setValue(DEFAULT_TRACKER_N_INIT)
-    mw.n_init_spin.setFixedWidth(62)
+    mw.n_init_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    mw.n_init_spin.setToolTip("允许范围: 1 - 30")
+    mw.n_init_spin.setFixedWidth(96)
     param_panel.addLayout(create_param_row("确认所需帧数", mw.n_init_spin))
 
     mw.detect_interval_spin = QSpinBox()
     mw.detect_interval_spin.setRange(1, 30)
     mw.detect_interval_spin.setValue(DEFAULT_DETECT_INTERVAL)
-    mw.detect_interval_spin.setFixedWidth(62)
+    mw.detect_interval_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    mw.detect_interval_spin.setToolTip("允许范围: 1 - 30")
+    mw.detect_interval_spin.setFixedWidth(96)
     param_panel.addLayout(create_param_row("抽帧间隔", mw.detect_interval_spin))
     param_panel.addStretch()
 
     param_widget = QWidget()
     param_widget.setLayout(param_panel)
-    param_widget.setFixedWidth(180)
+    param_widget.setFixedWidth(230)
     bottom_layout.addWidget(param_widget)
+    bottom_layout.addSpacerItem(QSpacerItem(32, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 中部统计面板
     stats_panel = QVBoxLayout()
@@ -204,6 +211,7 @@ def setup_ui(mw):
     stats_widget.setFixedWidth(200)
 
     bottom_layout.addWidget(stats_widget)
+    bottom_layout.addSpacerItem(QSpacerItem(32, 0, QSizePolicy.Fixed, QSizePolicy.Minimum))
 
     # 曲线图容器
     curve_container = QHBoxLayout()
@@ -242,9 +250,9 @@ def setup_ui(mw):
 def create_param_row(label_text, editor):
     row = QHBoxLayout()
     row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(6)
+    row.setSpacing(8)
     label = QLabel(label_text)
-    label.setFixedWidth(92)
+    label.setFixedWidth(110)
     row.addWidget(label)
     row.addWidget(editor)
     row.addStretch()
