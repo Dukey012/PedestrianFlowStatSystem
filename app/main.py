@@ -5,7 +5,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
-from core.detector import DetectionThread
+from services.detection_worker import DetectionThread
 from ui.main_view import setup_ui
 
 
