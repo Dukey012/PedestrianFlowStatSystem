@@ -63,8 +63,8 @@ def setup_ui(mw):
 
     # 回放按钮
     mw.btn_replay = QPushButton()
-    mw.btn_replay.setIcon(mw.style().standardIcon(QStyle.SP_BrowserReload))
-    mw.btn_replay.setIconSize(icon_size)
+    mw.btn_replay.setIcon(mw.style().standardIcon(QStyle.SP_MediaSeekBackward))
+    mw.btn_replay.setIconSize(QSize(30, 30))
     mw.btn_replay.setFixedSize(btn_size)
     mw.btn_replay.setToolTip("回放")
     mw.btn_replay.clicked.connect(mw.open_replay)
