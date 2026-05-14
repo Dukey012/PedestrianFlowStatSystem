@@ -74,7 +74,7 @@ class DetectionStore:
         try:
             self.cursor.execute(
                 "INSERT INTO person_durations VALUES (?, ?, ?)",
-                (track_id, enter_second, leave_second),
+                (track_id, self._round_second(enter_second), self._round_second(leave_second)),
             )
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"写入停留时长失败: {exc}") from exc
@@ -85,7 +85,7 @@ class DetectionStore:
         try:
             self.cursor.execute(
                 "INSERT INTO crossing_events VALUES (?, ?, ?)",
-                (track_id, frame_idx, second),
+                (track_id, frame_idx, self._round_second(second)),
             )
             self.conn.commit()
         except sqlite3.Error as exc:
@@ -166,6 +166,10 @@ class DetectionStore:
             "INSERT INTO second_stats VALUES (?, ?, ?)",
             (second, inside, ids_str),
         )
+
+    @staticmethod
+    def _round_second(second):
+        return round(float(second), 2)
 
     @staticmethod
     def load_second_stats(db_path):
