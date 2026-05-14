@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from PySide6.QtCore import QMutex, QThread, QWaitCondition, Signal
+from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
 
 from core.exceptions import DetectionPipelineError
 from core.counting import RegionCounter
@@ -12,11 +12,11 @@ from storage.sqlite_store import DetectionStore
 
 
 class DetectionThread(QThread):
-    frame_processed = Signal(int, np.ndarray)
-    stats_updated = Signal(int, int)
-    curve_data = Signal(int, int)
-    crossing_signal = Signal(int, int)
-    error_occurred = Signal(str)
+    frame_processed = pyqtSignal(int, np.ndarray)
+    stats_updated = pyqtSignal(int, int)
+    curve_data = pyqtSignal(int, int)
+    crossing_signal = pyqtSignal(int, int)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()

@@ -1,9 +1,9 @@
 import sys
 import os
 import cv2
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PyQt6.QtWidgets import *
+from PyQt6.QtCore import *
+from PyQt6.QtGui import *
 
 from core.exceptions import DetectionPipelineError
 from services.detection_worker import DetectionThread
@@ -195,10 +195,10 @@ class MainWindow(QMainWindow):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         bytes_per_line = ch * w
-        qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        qt_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
         return QPixmap.fromImage(qt_img).scaled(
             self.video_label.width(), self.video_label.height(),
-            Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
     # ================== 播放控制 ==================
     def toggle_play(self):
@@ -213,7 +213,7 @@ class MainWindow(QMainWindow):
         if not self.cap:
             return
         self.is_playing = True
-        self.btn_play.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
+        self.btn_play.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         self.timer.start(self._playback_timer_interval())
         if self.is_detecting and (self.detector_thread is None or not self.detector_thread.isRunning()):
             self._launch_detection_thread()
@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
 
     def pause_video(self):
         self.is_playing = False
-        self.btn_play.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self.btn_play.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self.timer.stop()
 
     def _playback_timer_interval(self):
@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
         self._clear_data()
         total_sec = self.total_frames / self.fps if self.fps > 0 else 0
         self.time_label.setText(f"0:00 / {self.format_time(total_sec)}")
-        self.btn_play.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self.btn_play.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self.btn_detect.setEnabled(not self.is_replay)
 
     def on_slider_moved(self, value):

@@ -1,15 +1,15 @@
-from PySide6.QtWidgets import QLabel
-from PySide6.QtCore import Signal, Qt, QPoint
-from PySide6.QtGui import QPainter, QPen, QColor
+from PyQt6.QtWidgets import QLabel
+from PyQt6.QtCore import pyqtSignal, Qt, QPoint
+from PyQt6.QtGui import QPainter, QPen, QColor
 
 
 class VideoLabel(QLabel):
-    region_changed = Signal(list)
+    region_changed = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
-        self.setAlignment(Qt.AlignCenter)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("border: none; background-color: #f0f0f0;")
         self.region = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
         self.user_defined_region = False
@@ -24,7 +24,7 @@ class VideoLabel(QLabel):
         self._region_enabled = enabled
         if not enabled:
             self.dragging_idx = -1
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_region_visible(self, visible):
         self._region_visible = visible
@@ -89,12 +89,12 @@ class VideoLabel(QLabel):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         if self.underMouse():
             pen = QPen(QColor(100, 100, 100), 2)
             painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             w = self.width()
             h = self.height()
             painter.drawRect(1, 1, w - 3, h - 3)
@@ -106,7 +106,7 @@ class VideoLabel(QLabel):
 
         pen = QPen(QColor(0, 120, 255), 2)
         painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         w = self.width()
         h = self.height()
         pts = [QPoint(int(p[0] * w), int(p[1] * h)) for p in self.region]
@@ -118,7 +118,7 @@ class VideoLabel(QLabel):
     def mousePressEvent(self, event):
         if not self._region_enabled:
             return
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position()
             w = self.width()
             h = self.height()
@@ -127,7 +127,7 @@ class VideoLabel(QLabel):
                 py = p[1] * h
                 if (pos.x() - px) ** 2 + (pos.y() - py) ** 2 <= (self.point_radius + 3) ** 2:
                     self.dragging_idx = i
-                    self.setCursor(Qt.ClosedHandCursor)
+                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
                     break
         super().mousePressEvent(event)
 
@@ -151,7 +151,7 @@ class VideoLabel(QLabel):
                 if (event.position().x() - px) ** 2 + (event.position().y() - py) ** 2 <= (self.point_radius + 3) ** 2:
                     hovering = True
                     break
-            self.setCursor(Qt.OpenHandCursor if hovering else Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor if hovering else Qt.CursorShape.ArrowCursor)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -160,7 +160,7 @@ class VideoLabel(QLabel):
         if self.dragging_idx >= 0:
             self.user_defined_region = True
             self.dragging_idx = -1
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
             frame_coords = self._map_to_frame_coords()
             self.region_changed.emit(frame_coords)
         super().mouseReleaseEvent(event)
