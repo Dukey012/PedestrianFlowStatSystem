@@ -11,6 +11,8 @@ class DetectionStore:
         self.cursor = None
         self.second_ids_buffer = {}
         self.last_recorded_second = -1
+        self.pending_write_count = 0
+        self.commit_batch_size = 50
 
     def set_db_path(self, db_path):
         self.db_path = db_path
@@ -76,6 +78,7 @@ class DetectionStore:
                 "INSERT INTO person_durations VALUES (?, ?, ?)",
                 (track_id, self._round_second(enter_second), self._round_second(leave_second)),
             )
+            self._commit_if_needed()
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"写入停留时长失败: {exc}") from exc
 
@@ -87,7 +90,7 @@ class DetectionStore:
                 "INSERT INTO crossing_events VALUES (?, ?, ?)",
                 (track_id, frame_idx, self._round_second(second)),
             )
-            self.conn.commit()
+            self._commit_if_needed()
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"写入通过事件失败: {exc}") from exc
 
@@ -114,7 +117,7 @@ class DetectionStore:
                         "INSERT INTO second_stats VALUES (?, ?, ?)",
                         (self.last_recorded_second, 0, ""),
                     )
-            self.conn.commit()
+                    self._commit_if_needed()
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"写入秒级统计失败: {exc}") from exc
 
@@ -139,6 +142,7 @@ class DetectionStore:
                 ),
             )
             self.conn.commit()
+            self.pending_write_count = 0
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"保存检测参数失败: {exc}") from exc
 
@@ -153,6 +157,7 @@ class DetectionStore:
                 self._insert_second_stats(sec, ids_set)
 
             self.conn.commit()
+            self.pending_write_count = 0
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"关闭数据库前写入剩余统计失败: {exc}") from exc
         finally:
@@ -166,6 +171,13 @@ class DetectionStore:
             "INSERT INTO second_stats VALUES (?, ?, ?)",
             (second, inside, ids_str),
         )
+        self._commit_if_needed()
+
+    def _commit_if_needed(self):
+        self.pending_write_count += 1
+        if self.pending_write_count >= self.commit_batch_size:
+            self.conn.commit()
+            self.pending_write_count = 0
 
     @staticmethod
     def _round_second(second):
