@@ -57,6 +57,10 @@ class MainWindow(QMainWindow):
         # 曲线数据
         self.curve_frames = []
         self.curve_counts = []
+        self.curve_dirty = False
+        self.curve_refresh_timer = QTimer()
+        self.curve_refresh_timer.setInterval(200)
+        self.curve_refresh_timer.timeout.connect(self.refresh_curve_if_dirty)
 
         # 计数区域
         self.count_region = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
@@ -66,6 +70,7 @@ class MainWindow(QMainWindow):
 
         # 调用 UI 构建函数
         setup_ui(self)
+        self.curve_refresh_timer.start()
         
     # 辅助函数
     def format_time(self, seconds):
@@ -224,6 +229,7 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.btn_play.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self.timer.stop()
+        self.refresh_curve_if_dirty(force=True)
 
     def _playback_timer_interval(self):
         if self.is_detecting:
@@ -311,6 +317,7 @@ class MainWindow(QMainWindow):
             self.timer.setInterval(self._playback_timer_interval())
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
+        self.refresh_curve_if_dirty(force=True)
 
     def on_detection_error(self, message, session_id=None):
         if session_id is not None and session_id != self.detection_session_id:
@@ -332,6 +339,7 @@ class MainWindow(QMainWindow):
             self.timer.setInterval(self._playback_timer_interval())
         self.current_in_region = 0
         self.update_stats(self.total_crossing, 0)
+        self.refresh_curve_if_dirty(force=True)
         QMessageBox.critical(self, "检测错误", message)
 
     def _launch_detection_thread(self):
@@ -540,7 +548,7 @@ class MainWindow(QMainWindow):
         self.time_label.setText(f"{self.format_time(seconds)} / {self.format_time(total_seconds)}")
         if hasattr(self, "pos_line"):
             self.pos_line.set_xdata([seconds])
-            self.canvas.draw_idle()
+            self.curve_dirty = True
         pix = self.frame_to_pixmap(frame)
         self.video_label.setPixmap(pix)
         self._pump_detection_frames()
@@ -563,7 +571,11 @@ class MainWindow(QMainWindow):
             return
         self.curve_frames.append(frame_idx)
         self.curve_counts.append(count)
-        self.update_curve()
+        self.curve_dirty = True
+
+    def refresh_curve_if_dirty(self, force=False):
+        if force or self.curve_dirty:
+            self.update_curve()
 
     def clear_span_selection(self):
         if hasattr(self, "span_start_edit"):
@@ -597,6 +609,7 @@ class MainWindow(QMainWindow):
         self.ax.relim()
         self.ax.autoscale_view(scalex=False, scaley=True)
         self.canvas.draw_idle()
+        self.curve_dirty = False
 
     def parse_time_input(self, text):
         text = text.strip()
@@ -718,6 +731,7 @@ class MainWindow(QMainWindow):
             self.timer.setInterval(max(1, int(1000 / (self.fps * self.speed))))
 
     def closeEvent(self, event):
+        self.curve_refresh_timer.stop()
         if self.detector_thread:
             self.detector_thread.stop()
         if self.cap:
