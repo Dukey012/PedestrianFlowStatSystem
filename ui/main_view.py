@@ -129,11 +129,11 @@ def setup_ui(mw):
 
     main_layout.addLayout(control_layout)
 
-    # 底部布局（参数面板 + 统计面板 + 曲线图）
+    # 底部布局（参数区 + 计数区 + 图表区）
     bottom_layout = QHBoxLayout()
     bottom_layout.setSpacing(0)
 
-    # 左侧参数面板
+    # 左侧参数区
     param_panel = QVBoxLayout()
     param_panel.setContentsMargins(0, 0, 0, 0)
     param_panel.setSpacing(0)
@@ -191,7 +191,7 @@ def setup_ui(mw):
     bottom_layout.addWidget(param_widget)
     bottom_layout.addSpacerItem(QSpacerItem(40, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
 
-    # 中部统计面板
+    # 中部计数区
     stats_panel = QVBoxLayout()
     stats_panel.setContentsMargins(0, 0, 0, 0)
     stats_panel.setSpacing(0)
@@ -212,7 +212,7 @@ def setup_ui(mw):
     bottom_layout.addWidget(stats_widget)
     bottom_layout.addSpacerItem(QSpacerItem(6, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
 
-    # 曲线图容器
+    # 右侧图表区
     curve_container = QHBoxLayout()
     curve_container.setContentsMargins(0, 0, 0, 0)
 
@@ -324,10 +324,9 @@ def create_concentric_icon(size=20, color=QColor(0, 0, 0)):
     pen = QPen(color, 2.7)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    # 外圆
+
     outer_r = size / 2 - 2
     painter.drawEllipse(QPointF(size / 2, size / 2), outer_r, outer_r)
-    # 内圆
     inner_r = outer_r // 2
     painter.drawEllipse(QPointF(size / 2, size / 2), inner_r, inner_r)
 

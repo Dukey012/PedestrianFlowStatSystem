@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         # 调用 UI 构建函数
         setup_ui(self)
         
-    # ================== 辅助函数 ==================
+    # 辅助函数
     def format_time(self, seconds):
         if seconds < 0:
             return "--.--"
@@ -111,7 +111,7 @@ class MainWindow(QMainWindow):
         self.n_init_spin.setValue(int(params["tracker_n_init"]))
         self.detect_interval_spin.setValue(int(params["detect_interval"]))
 
-    # ================== 视频打开 ==================
+    # 视频打开
     def open_video(self):
         if self.is_detecting:
             self.stop_detection()
@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
             self.video_label.width(), self.video_label.height(),
             Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
-    # ================== 播放控制 ==================
+    # 播放控制
     def toggle_play(self):
         if not self.cap:
             return
@@ -256,7 +256,7 @@ class MainWindow(QMainWindow):
             self.pause_video()
             self.show_frame_at(value)
 
-    # ================== 检测开关 ==================
+    # 检测开关
     def toggle_detection(self, checked):
         if self.is_replay:
             QMessageBox.warning(self, "提示", "回放模式下不能使用检测功能")
@@ -398,7 +398,7 @@ class MainWindow(QMainWindow):
             self.detector_thread = None
             self.on_detection_error(f"启动检测失败: {exc}")
 
-    # ================== 回放 ==================
+    # 回放
     def open_replay(self):
         if self.is_detecting:
             self.stop_detection()
@@ -478,7 +478,7 @@ class MainWindow(QMainWindow):
         crossing, inside = DetectionStore.get_replay_stats_at(self.stats_db_path, current_sec)
         self.update_stats(crossing, inside)
 
-    # ================== 帧更新循环 ==================
+    # 帧更新循环
     def update_frame(self):
         if self.cap and self.is_playing:
             if self.is_detecting and self.detector_thread and self.detector_thread.isRunning():
