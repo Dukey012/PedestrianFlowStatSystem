@@ -17,7 +17,7 @@ class VideoRecorder:
         self.last_written_idx = -1
         self.last_written_frame = None
 
-    def write(self, processed_frame, frame_idx, raw_frame):
+    def write(self, processed_frame, frame_idx):
         if self.video_writer is None:
             return
         if self.last_written_idx < 0:

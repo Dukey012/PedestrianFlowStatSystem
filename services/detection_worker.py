@@ -248,7 +248,7 @@ class DetectionThread(QThread):
         processed = frame.copy()
         display_sec = frame_idx / self.fps if self.fps > 0 else 0
         self._draw_overlay(processed, tracks, total_crossing, inside_count, display_sec)
-        self.recorder.write(processed, frame_idx, frame)
+        self.recorder.write(processed, frame_idx)
         self.frame_processed.emit(frame_idx, processed)
 
     def _draw_overlay(self, frame, tracks, total_crossing, inside_count, current_sec):
