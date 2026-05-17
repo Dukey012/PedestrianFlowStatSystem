@@ -467,9 +467,10 @@ class MainWindow(QMainWindow):
         return db_path if os.path.exists(db_path) else None
 
     def _restore_stats_from_db(self, db_path):
-        second_stats = DetectionStore.load_second_stats(db_path)
-        self.curve_frames = [int(second * self.fps) for second, _ in second_stats]
-        self.curve_counts = [inside_count for _, inside_count in second_stats]
+        total_seconds = self.total_frames / self.fps if self.fps > 0 else 0
+        curve_stats = DetectionStore.build_replay_curve_stats(db_path, total_seconds)
+        self.curve_frames = [int(second * self.fps) for second, _ in curve_stats]
+        self.curve_counts = [inside_count for _, inside_count in curve_stats]
         self._update_replay_stats_at(0)
         self.update_curve()
 

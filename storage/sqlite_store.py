@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from core.exceptions import DetectionPipelineError
@@ -65,6 +66,18 @@ class DetectionStore:
                     source_start_second REAL
                 )
                 """
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_person_durations_enter_second "
+                "ON person_durations(enter_second)"
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_person_durations_leave_second "
+                "ON person_durations(leave_second)"
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_crossing_events_second "
+                "ON crossing_events(second)"
             )
             self.conn.commit()
         except sqlite3.Error as exc:
@@ -188,7 +201,7 @@ class DetectionStore:
         if not db_path or not Path(db_path).exists():
             return []
         try:
-            with sqlite3.connect(db_path, timeout=1.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=1.0)) as conn:
                 return conn.execute(
                     "SELECT second, inside_count FROM second_stats ORDER BY second"
                 ).fetchall()
@@ -196,11 +209,46 @@ class DetectionStore:
             raise DetectionPipelineError(f"读取秒级统计失败: {exc}") from exc
 
     @staticmethod
+    def build_replay_curve_stats(db_path, total_seconds):
+        if not db_path or not Path(db_path).exists():
+            return []
+        try:
+            with closing(sqlite3.connect(db_path, timeout=1.0)) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT enter_second, leave_second
+                    FROM person_durations
+                    ORDER BY enter_second, leave_second
+                    """
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise DetectionPipelineError(f"生成回放人数曲线失败: {exc}") from exc
+
+        max_second = max(0, int(total_seconds))
+        enter_times = sorted(enter_second for enter_second, _ in rows)
+        leave_times = sorted(leave_second for _, leave_second in rows)
+        enter_idx = 0
+        leave_idx = 0
+        active_count = 0
+        stats = []
+
+        for second in range(max_second + 1):
+            while enter_idx < len(enter_times) and enter_times[enter_idx] <= second:
+                active_count += 1
+                enter_idx += 1
+            while leave_idx < len(leave_times) and leave_times[leave_idx] <= second:
+                active_count -= 1
+                leave_idx += 1
+            stats.append((second, active_count))
+
+        return stats
+
+    @staticmethod
     def count_crossings_between(db_path, start_sec, end_sec):
         if not db_path or not Path(db_path).exists():
             return 0
         try:
-            with sqlite3.connect(db_path, timeout=1.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=1.0)) as conn:
                 row = conn.execute(
                     """
                     SELECT COUNT(*)
@@ -218,7 +266,7 @@ class DetectionStore:
         if not db_path or not Path(db_path).exists():
             return None
         try:
-            with sqlite3.connect(db_path, timeout=1.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=1.0)) as conn:
                 row = conn.execute(
                     """
                     SELECT model_name, conf_threshold, image_size, tracker_max_age,
@@ -250,20 +298,23 @@ class DetectionStore:
         if not db_path or not Path(db_path).exists():
             return 0, 0
         try:
-            with sqlite3.connect(db_path, timeout=1.0) as conn:
+            with closing(sqlite3.connect(db_path, timeout=1.0)) as conn:
                 crossing_row = conn.execute(
                     "SELECT COUNT(*) FROM crossing_events WHERE second <= ?",
                     (current_sec,),
                 ).fetchone()
                 inside_row = conn.execute(
                     """
-                    SELECT inside_count
-                    FROM second_stats
-                    WHERE second <= ?
-                    ORDER BY second DESC
-                    LIMIT 1
+                    SELECT
+                        (SELECT COUNT(*)
+                         FROM person_durations
+                         WHERE enter_second <= ?)
+                        -
+                        (SELECT COUNT(*)
+                         FROM person_durations
+                         WHERE leave_second <= ?)
                     """,
-                    (int(current_sec),),
+                    (current_sec, current_sec),
                 ).fetchone()
         except sqlite3.Error as exc:
             raise DetectionPipelineError(f"读取回放统计失败: {exc}") from exc
