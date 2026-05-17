@@ -57,7 +57,7 @@ def setup_ui(mw):
     mw.btn_open.setIcon(mw.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
     mw.btn_open.setIconSize(icon_size)
     mw.btn_open.setFixedSize(btn_size)
-    mw.btn_open.setToolTip("打开视频")
+    mw.btn_open.setToolTip("打开视频[F]")
     mw.btn_open.clicked.connect(mw.open_video)
     control_layout.addWidget(mw.btn_open)
 
@@ -66,7 +66,7 @@ def setup_ui(mw):
     mw.btn_replay.setIcon(mw.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekBackward))
     mw.btn_replay.setIconSize(QSize(30, 30))
     mw.btn_replay.setFixedSize(btn_size)
-    mw.btn_replay.setToolTip("回放")
+    mw.btn_replay.setToolTip("回放[R]")
     mw.btn_replay.clicked.connect(mw.open_replay)
     control_layout.addWidget(mw.btn_replay)
 
@@ -75,7 +75,7 @@ def setup_ui(mw):
     mw.btn_play.setIcon(mw.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
     mw.btn_play.setIconSize(QSize(28, 28))
     mw.btn_play.setFixedSize(btn_size)
-    mw.btn_play.setToolTip("播放/暂停")
+    mw.btn_play.setToolTip("播放/暂停[Space]")
     mw.btn_play.clicked.connect(mw.toggle_play)
     mw.btn_play.setEnabled(False)
     control_layout.addWidget(mw.btn_play)
@@ -88,7 +88,7 @@ def setup_ui(mw):
     mw.btn_detect.setIcon(normal_icon)
     mw.btn_detect.setIconSize(icon_size)
     mw.btn_detect.setFixedSize(btn_size)
-    mw.btn_detect.setToolTip("检测")
+    mw.btn_detect.setToolTip("检测[C]")
     mw.btn_detect.clicked.connect(mw.toggle_detection)
     control_layout.addWidget(mw.btn_detect)
 
@@ -96,13 +96,13 @@ def setup_ui(mw):
     mw.detect_icon_active = active_icon
 
     # 重置按钮
-    mw.btn_stop = QPushButton()
-    mw.btn_stop.setIcon(mw.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
-    mw.btn_stop.setIconSize(QSize(22, 22))
-    mw.btn_stop.setFixedSize(btn_size)
-    mw.btn_stop.setToolTip("重置")
-    mw.btn_stop.clicked.connect(mw.stop_video)
-    control_layout.addWidget(mw.btn_stop)
+    mw.btn_reset = QPushButton()
+    mw.btn_reset.setIcon(mw.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
+    mw.btn_reset.setIconSize(QSize(22, 22))
+    mw.btn_reset.setFixedSize(btn_size)
+    mw.btn_reset.setToolTip("重置[D]")
+    mw.btn_reset.clicked.connect(mw.reset_video)
+    control_layout.addWidget(mw.btn_reset)
 
     # 倍速选择
     control_layout.addWidget(QLabel("倍速:"))
@@ -276,6 +276,7 @@ def create_span_input_row(mw):
 
     mw.btn_span_stat = QPushButton("统计")
     mw.btn_span_stat.setFixedSize(42, button_height)
+    mw.btn_span_stat.setToolTip("[S]")
     mw.btn_span_stat.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     mw.btn_span_stat.clicked.connect(mw.on_manual_span_stat)
     row.addWidget(mw.btn_span_stat)

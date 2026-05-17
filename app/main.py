@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
 
         # 调用 UI 构建函数
         setup_ui(self)
+        self.setup_shortcuts()
         self.curve_refresh_timer.start()
         
     # 辅助函数
@@ -115,6 +116,37 @@ class MainWindow(QMainWindow):
         self.max_age_spin.setValue(int(params["tracker_max_age"]))
         self.n_init_spin.setValue(int(params["tracker_n_init"]))
         self.detect_interval_spin.setValue(int(params["detect_interval"]))
+
+    def setup_shortcuts(self):
+        shortcut_bindings = (
+            ("F", self.open_video),
+            ("R", self.open_replay),
+            ("Space", self.toggle_play),
+            ("C", self.toggle_detection_shortcut),
+            ("D", self.reset_video),
+            ("V", self.toggle_speed_combo_popup),
+            ("S", self.on_manual_span_stat),
+        )
+        self.shortcuts = []
+        for key, handler in shortcut_bindings:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(handler)
+            self.shortcuts.append(shortcut)
+
+    def toggle_detection_shortcut(self):
+        if not self.btn_detect.isEnabled():
+            return
+        self.btn_detect.setChecked(not self.btn_detect.isChecked())
+        self.toggle_detection(self.btn_detect.isChecked())
+
+    def toggle_speed_combo_popup(self):
+        if not self.speed_combo.isEnabled():
+            return
+        if self.speed_combo.view().isVisible():
+            self.speed_combo.hidePopup()
+        else:
+            self.speed_combo.showPopup()
 
     # 视频打开
     def open_video(self):
@@ -236,7 +268,7 @@ class MainWindow(QMainWindow):
             return max(10, int(1000 / self.fps)) if self.fps > 0 else 40
         return max(1, int(1000 / (self.fps * self.speed)))
 
-    def stop_video(self):
+    def reset_video(self):
         self.pause_video()
         if self.is_detecting:
             self.stop_detection()
@@ -254,11 +286,9 @@ class MainWindow(QMainWindow):
         if self.updating_progress:
             return
         if self.is_detecting:
-            # 检测状态：回弹并停止播放
             self.pause_video()
-            self.set_progress(self.current_frame_idx)   # 回弹到当前帧
+            self.set_progress(self.current_frame_idx)
         else:
-            # 非检测状态：实时预览并暂停播放
             self.pause_video()
             self.show_frame_at(value)
 
