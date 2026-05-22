@@ -750,7 +750,7 @@ class MainWindow(QMainWindow):
         if self.detector_thread:
             self.detector_thread.set_region(self.count_region)
 
-    def change_speed(self, index):
+    def change_speed(self, _index):
         if self.is_detecting:
             self.speed_combo.blockSignals(True)
             self.speed_combo.setCurrentIndex(1)
