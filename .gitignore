@@ -19,6 +19,7 @@ env/
 
 # Project-local Codex skills stay on this machine; do not publish them.
 .codex/skills/
+AGENTS.md
 
 # Runtime data
 data/*
