@@ -17,6 +17,9 @@ env/
 .env
 .env.*
 
+# Project-local Codex skills stay on this machine; do not publish them.
+.codex/skills/
+
 # Runtime data
 data/*
 output/*
